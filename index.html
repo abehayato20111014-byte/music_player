@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <title>Next-Gen Vertical Piano Roll Sequencer Pro X - 統合最終決定版</title>
+  <title>Next-Gen Vertical Piano Roll Sequencer Pro X - 完全版 v6</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/vexflow/4.2.2/vexflow-min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
@@ -79,7 +79,6 @@
     .tool-btn.active { background-color: #00bcd4; border-color: #00e5ff; color: #111111; font-weight: bold; }
     #toolBpm.active { background-color: #ff9800; border-color: #ffb74d; color: #111111; }
     
-    /* ワークスペースとインスペクターの横並び用レイアウト */
     .main-area {
       display: flex;
       flex: 1;
@@ -111,7 +110,6 @@
       display: block; 
     }
     
-    /* 詳細表示（インスペクター）のスタイル */
     #inspectorPanel {
       width: 280px;
       background-color: #1e1e1e;
@@ -134,17 +132,6 @@
     .inspector-prop label {
       color: #aaaaaa;
       font-size: 11px;
-    }
-    .yukumo-btn {
-      flex: 1;
-      padding: 4px 2px;
-      font-size: 11px;
-      font-weight: bold;
-      text-align: center;
-      border-radius: 4px;
-      border: 1px solid #3a3a3a;
-      background-color: #2b2b2b;
-      color: #e0e0e0;
     }
 
     .keyboard-wrapper { 
@@ -235,9 +222,11 @@
       <div class="toolbar-section">
         <button id="saveJsonBtn">保存</button>
         <button id="loadJsonBtn">読込</button>
-        <button id="exportXmlBtn" class="action-btn" style="background-color:#d81b60; color:white; border-color:#d81b60;">🎤 ボカロ/テト出力(XML)</button>
         <input type="file" id="jsonFileInput" accept=".json" style="display: none;">
-        <button id="exportWavBtn">WAV</button>
+        
+        <button id="exportXmlBtn" class="action-btn" style="background-color:#d81b60; color:white; border-color:#d81b60;">🎤 ボカロ出力(XML)</button>
+        <button id="playVoicevoxBtn" class="action-btn" style="background-color:#248a3d; color:white; border-color:#2ea44f; font-weight:bold;">🟢 合唱ミックス保存(VOICEVOX)</button>
+        <button id="exportWavBtn">伴奏のみWAV</button>
         <button id="exportPdfBtn">PDF</button>
       </div>
     </div>
@@ -318,7 +307,8 @@
       e.preventDefault(); e.returnValue = msg; return msg;
     });
 
-    const sampler = new Tone.Sampler({
+    // ピアノ伴奏用サンプラー
+    const samplerOptions = {
       urls: {
         "A0": "A0.mp3", "C1": "C1.mp3", "D#1": "Ds1.mp3", "F#1": "Fs1.mp3",
         "A1": "A1.mp3", "C2": "C2.mp3", "D#2": "Ds2.mp3", "F#2": "Fs2.mp3",
@@ -331,7 +321,35 @@
       },
       release: 1.2,
       baseUrl: "https://tonejs.github.io/audio/salamander/"
-    }).toDestination();
+    };
+    const sampler = new Tone.Sampler(samplerOptions).toDestination();
+
+    // 共通のWAVエンコーダー関数
+    function audioBufferToWavBlob(buffer) {
+      const numOfChan = buffer.numberOfChannels;
+      const length = buffer.length * numOfChan * 2 + 44;
+      const bufferWav = new ArrayBuffer(length);
+      const view = new DataView(bufferWav);
+      const sampleRate = buffer.sampleRate;
+      let pos = 0;
+      function setU16(d) { view.setUint16(pos, d, true); pos += 2; }
+      function setU32(d) { view.setUint32(pos, d, true); pos += 4; }
+      
+      setU32(0x46464952); setU32(length - 8); setU32(0x45564157); setU32(0x20746d66);
+      setU32(16); setU16(1); setU16(numOfChan); setU32(sampleRate);
+      setU32(sampleRate * 2 * numOfChan); setU16(numOfChan * 2); setU16(16);
+      setU32(0x61746164); setU32(length - pos - 4);
+
+      for (let i = 0; i < numOfChan; i++) {
+        const channel = buffer.getChannelData(i);
+        for (let j = 0; j < buffer.length; j++) {
+          let s = Math.max(-1, Math.min(1, channel[j]));
+          const offset = pos + (j * numOfChan + i) * 2;
+          view.setInt16(offset, (0.5 + s < 0 ? s * 32768 : s * 32767) | 0, true);
+        }
+      }
+      return new Blob([view], { type: 'audio/wav' });
+    }
 
     function getBpmAtBeat(beat, changes) {
       let activeBpm = changes[0].bpm;
@@ -475,7 +493,6 @@
       return { midi: START_MIDI + Math.floor(absX / NOTE_WIDTH), beat: (TOTAL_HEIGHT - absY) / BEAT_HEIGHT, absX, absY };
     }
 
-    /* --- 詳細表示（インスペクター）表示更新ロジック --- */
     function updateInspector() {
       const content = document.getElementById("inspectorContent");
       if (selectedNoteIds.size === 0) {
@@ -483,12 +500,9 @@
         return;
       }
       
-      const targetId = Array.from(selectedNoteIds)[selectedNoteIds.size - 1]; // 最後に選択したノート
+      const targetId = Array.from(selectedNoteIds)[selectedNoteIds.size - 1];
       const note = notes.find(n => n.id === targetId);
-      if (!note) {
-        content.innerHTML = `<p style="color: #666; font-size: 12px; text-align: center; margin-top: 20px;">ノートを選択してください</p>`;
-        return;
-      }
+      if (!note) return;
 
       if (note.pitchOffset == null) note.pitchOffset = 0.0;
 
@@ -498,7 +512,7 @@
           
           <div class="inspector-prop">
             <label>歌詞</label>
-            <input type="text" id="inspLyric" value="${note.lyric || 'あ'}" style="background-color: #2b2b2b; color: #fff; border: 1px solid #3a3a3a; padding: 5px; border-radius: 4px; width:100%; text-align:left;">
+            <input type="text" id="inspLyric" value="${note.lyric || ''}" style="background-color: #2b2b2b; color: #fff; border: 1px solid #3a3a3a; padding: 5px; border-radius: 4px; width:100%; text-align:left;">
           </div>
 
           <div class="inspector-prop">
@@ -520,7 +534,7 @@
             <label style="color: #00bcd4; font-weight: bold; font-size: 11px;">イントネーション調整 (ゆくも風)</label>
             
             <div style="display: flex; justify-content: space-between; background-color: #151515; padding: 8px; border-radius: 6px; align-items: center; border: 1px solid #2a2a2a; margin-top:4px;">
-              <span style="font-size: 14px; font-weight: bold; color: #fff; width: 40px; text-align: center;" id="inspYukumoChar">${note.lyric || 'あ'}</span>
+              <span style="font-size: 14px; font-weight: bold; color: #fff; width: 40px; text-align: center;" id="inspYukumoChar">${note.lyric || ''}</span>
               <div style="display: flex; flex-direction: column; gap: 3px; width: 100px;">
                 <button id="btnYukumoHigh" style="padding: 2px 5px; font-size: 10px; background-color: ${note.pitchOffset > 0.2 ? '#ff9800' : '#2b2b2b'}; color: ${note.pitchOffset > 0.2 ? '#111' : '#e0e0e0'}; font-weight: bold; border-color:#4a4a4a;">▲ 高</button>
                 <button id="btnYukumoNormal" style="padding: 2px 5px; font-size: 10px; background-color: ${Math.abs(note.pitchOffset) <= 0.2 ? '#00bcd4' : '#2b2b2b'}; color: ${Math.abs(note.pitchOffset) <= 0.2 ? '#111' : '#e0e0e0'}; font-weight: bold; border-color:#4a4a4a;">■ 中</button>
@@ -539,7 +553,6 @@
         </div>
       `;
 
-      // イベントリスナー紐付け
       document.getElementById("inspLyric").addEventListener("change", (e) => {
         pushHistory(); note.lyric = e.target.value;
         const cSpan = document.getElementById("inspYukumoChar"); if (cSpan) cSpan.textContent = e.target.value;
@@ -601,7 +614,7 @@
         const exist = notes.find(n => n.midi === midi && snapBeat >= n.startBeat && snapBeat < n.startBeat + n.duration);
         if (!exist) {
           pushHistory();
-          const newNote = { id: "n_" + Date.now() + "_" + Math.floor(Math.random() * 1000), midi, startBeat: snapBeat, duration: snapUnit, lyric: "あ", pitchOffset: 0.0 };
+          const newNote = { id: "n_" + Date.now() + "_" + Math.floor(Math.random() * 1000), midi, startBeat: snapBeat, duration: snapUnit, lyric: "", pitchOffset: 0.0 };
           notes.push(newNote); scheduleAllNotes();
           sampler.triggerAttackRelease(Tone.Frequency(midi, "midi").toNote(), snapUnit * (60 / getBpmAtBeat(snapBeat, currentBpmChanges)));
           selectedNoteIds.clear(); selectedNoteIds.add(newNote.id);
@@ -612,11 +625,7 @@
         if (targetNote) {
           const newLyric = prompt("歌詞を入力してください（ひらがな推奨）:", targetNote.lyric || "あ");
           if (newLyric !== null) {
-            pushHistory();
-            targetNote.lyric = newLyric;
-            scheduleAllNotes();
-            updateInspector();
-            requestAnimationFrame(draw);
+            pushHistory(); targetNote.lyric = newLyric; scheduleAllNotes(); updateInspector(); requestAnimationFrame(draw);
           }
         }
       } else if (currentTool === 'eraser') {
@@ -656,11 +665,7 @@
 
     canvas.addEventListener('mousemove', (e) => {
       const { midi, beat, absX, absY } = getVirtualCoordinates(e);
-      
-      if (isBpmSelecting) {
-        bpmSelectEndBeat = Math.floor(beat / snapUnit) * snapUnit;
-        return;
-      }
+      if (isBpmSelecting) { bpmSelectEndBeat = Math.floor(beat / snapUnit) * snapUnit; return; }
 
       if (!isDragging && !isSelectingArea) {
         if (currentTool === 'pointer') {
@@ -930,7 +935,7 @@
                 midi: parseInt(n.midi), 
                 startBeat: parseFloat(n.startBeat), 
                 duration: parseFloat(n.duration),
-                lyric: n.lyric || "あ",
+                lyric: n.lyric || "",
                 pitchOffset: n.pitchOffset != null ? parseFloat(n.pitchOffset) : 0.0
               });
             }
@@ -961,9 +966,10 @@
       reader.readAsText(file);
     });
 
+    // 伴奏のみのWAVエクスポート機能
     document.getElementById("exportWavBtn").addEventListener('click', async () => {
       if (notes.length === 0) return alert("出力するノートがありません。");
-      alert("WAVバックグラウンドレンダリングを開始します。");
+      alert("伴奏のWAVバックグラウンドレンダリングを開始します...");
       
       let maxBeat = 0;
       for(let i=0; i<notes.length; i++) { if (notes[i].startBeat + notes[i].duration > maxBeat) maxBeat = notes[i].startBeat + notes[i].duration; }
@@ -971,21 +977,8 @@
 
       try {
         const buffer = await Tone.Offline(async () => {
-          const offlineSampler = new Tone.Sampler({
-            urls: {
-              "A0": "A0.mp3", "C1": "C1.mp3", "D#1": "Ds1.mp3", "F#1": "Fs1.mp3",
-              "A1": "A1.mp3", "C2": "C2.mp3", "D#2": "Ds2.mp3", "F#2": "Fs2.mp3",
-              "A2": "A2.mp3", "C3": "C3.mp3", "D#3": "Ds3.mp3", "F#3": "Fs3.mp3",
-              "A3": "A3.mp3", "C4": "C4.mp3", "D#4": "Ds4.mp3", "F#4": "Fs4.mp3",
-              "A4": "A4.mp3", "C5": "C5.mp3", "D#5": "Ds5.mp3", "F#5": "Fs5.mp3",
-              "A5": "A5.mp3", "C6": "C6.mp3", "D#6": "Ds6.mp3", "F#6": "Fs6.mp3",
-              "A6": "A6.mp3", "C7": "C7.mp3", "D#7": "Ds7.mp3", "F#7": "Fs7.mp3",
-              "A7": "A7.mp3", "C8": "C8.mp3"
-            },
-            release: 1.2, baseUrl: "https://tonejs.github.io/audio/salamander/"
-          }).toDestination();
+          const offlineSampler = new Tone.Sampler(samplerOptions).toDestination();
           await Tone.loaded();
-
           notes.forEach(note => {
             const startSec = beatToSeconds(note.startBeat, currentBpmChanges);
             const endSec = beatToSeconds(note.startBeat + note.duration, currentBpmChanges);
@@ -993,26 +986,162 @@
           });
         }, durationSec);
 
-        const numOfChan = buffer.numberOfChannels, length = buffer.length * numOfChan * 2 + 44;
-        const bufferWav = new ArrayBuffer(length), view = new DataView(bufferWav);
-        const sampleRate = buffer.sampleRate; let pos = 0;
-        function setU16(d) { view.setUint16(pos, d, true); pos += 2; }
-        function setU32(d) { view.setUint32(pos, d, true); pos += 4; }
-        setU32(0x46464952); setU32(length - 8); setU32(0x45564157); setU32(0x20746d66);
-        setU32(16); setU16(1); setU16(numOfChan); setU32(sampleRate);
-        setU32(sampleRate * 2 * numOfChan); setU16(numOfChan * 2); setU16(16);
-        setU32(0x61746164); setU32(length - pos - 4);
-
-        for (let i = 0; i < numOfChan; i++) {
-          const channel = buffer.getChannelData(i);
-          for (let j = 0; j < buffer.length; j++) {
-            let s = Math.max(-1, Math.min(1, channel[j]));
-            view.setInt16(pos + j * numOfChan * 2 + i * 2, (0.5 + s < 0 ? s * 32768 : s * 32767) | 0, true);
-          }
-        }
-        const blob = new Blob([view], { type: 'audio/wav' }); const url = URL.createObjectURL(blob);
-        const a = document.createElement("a"); a.href = url; a.download = `sequence_${Date.now()}.wav`; a.click(); URL.revokeObjectURL(url);
+        const wavBlob = audioBufferToWavBlob(buffer);
+        const url = URL.createObjectURL(wavBlob);
+        const a = document.createElement("a"); a.href = url; a.download = `backing_track_${Date.now()}.wav`; a.click(); URL.revokeObjectURL(url);
       } catch (err) { alert("エクスポート失敗"); }
+    });
+
+    // --- 完全版 VOICEVOX ＋ 伴奏ミックス機能 ---
+    document.getElementById('playVoicevoxBtn').addEventListener('click', async () => {
+      if (notes.length === 0) return alert("ノートがありません。");
+      await Tone.start();
+      
+      alert("VOICEVOXの歌声と伴奏の合成を開始します... (数十秒かかる場合があります)\\n※処理中は画面を閉じないでください。\\n※VOICEVOXアプリが起動していることを確認してください。");
+      
+      try {
+        const bpmInput = document.getElementById('bpmInput');
+        const bpmValue = parseFloat(bpmInput ? bpmInput.value : 120) || 120;
+        const secPerBeat = 60.0 / bpmValue;
+        const speakerId = 3; // ずんだもん
+        
+        // 歌詞の有無でボーカル用ノートを抽出
+        const sorted = [...notes].sort((a, b) => a.startBeat - b.startBeat);
+        const vocalNotes = sorted.filter(n => n.lyric && n.lyric.trim() !== "");
+        
+        if (vocalNotes.length === 0) {
+          alert("歌詞が設定されているノートがありません！伴奏のみ出力する場合は「伴奏のみWAV」ボタンを使用してください。");
+          return;
+        }
+
+        const finalQuery = {
+          accent_phrases: [],
+          speedScale: 1.0,
+          pitchScale: 0.0,
+          intonationScale: 1.0,
+          volumeScale: 1.0,
+          prePhonemeLength: vocalNotes[0].startBeat * secPerBeat, // 曲の出だしの長さを自動調整 
+          postPhonemeLength: 0.5,
+          outputSamplingRate: 44100,
+          outputStereo: false
+        };
+
+        // 1文字ずつ正確にタイミングとピッチを計算してクエリを構築
+        for (let i = 0; i < vocalNotes.length; i++) {
+            const note = vocalNotes[i];
+            let lyric = note.lyric;
+            
+            const qRes = await fetch(`http://127.0.0.1:50021/audio_query?text=${encodeURIComponent(lyric)}&speaker=${speakerId}`, { method: 'POST' });
+            if (!qRes.ok) throw new Error("VOICEVOXとの通信エラー");
+            const qData = await qRes.json();
+            
+            if (qData.accent_phrases.length > 0) {
+                let totalVowel = 0;
+                qData.accent_phrases.forEach(p => p.moras.forEach(m => totalVowel += m.vowel_length));
+                
+                const targetDuration = note.duration * secPerBeat;
+                const hz = 440.0 * Math.pow(2, (note.midi - 69) / 12.0);
+                const targetPitch = Math.log2(hz) + (note.pitchOffset || 0);
+
+                for (let pIdx = 0; pIdx < qData.accent_phrases.length; pIdx++) {
+                    let phrase = qData.accent_phrases[pIdx];
+                    for (let mIdx = 0; mIdx < phrase.moras.length; mIdx++) {
+                        let m = phrase.moras[mIdx];
+                        m.pitch = targetPitch; 
+                        if (totalVowel > 0) {
+                            const ratio = m.vowel_length / totalVowel;
+                            const consonant = m.consonant_length || 0;
+                            m.vowel_length = Math.max(0.01, (targetDuration * ratio) - consonant);
+                        } else {
+                            m.vowel_length = Math.max(0.01, targetDuration);
+                        }
+                    }
+                    
+                    // 次の音符との間の休符(無音)を正確に計算して挿入
+                    if (pIdx === qData.accent_phrases.length - 1) {
+                        if (i < vocalNotes.length - 1) {
+                            const nextNote = vocalNotes[i+1];
+                            const gap = nextNote.startBeat - (note.startBeat + note.duration);
+                            if (gap > 0.01) {
+                                phrase.pause_mora = {
+                                    text: "、", consonant: null, consonant_length: null,
+                                    vowel: "pau", vowel_length: gap * secPerBeat, pitch: 0
+                                };
+                            } else {
+                                phrase.pause_mora = null;
+                            }
+                        } else {
+                            phrase.pause_mora = null;
+                        }
+                    }
+                    finalQuery.accent_phrases.push(phrase);
+                }
+            }
+        }
+
+        // VOICEVOXに合成リクエスト
+        const synthRes = await fetch(`http://127.0.0.1:50021/synthesis?speaker=${speakerId}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(finalQuery)
+        });
+        if (!synthRes.ok) throw new Error("音声の合成に失敗しました。");
+
+        const arrayBuffer = await synthRes.arrayBuffer();
+        
+        // Web Audio APIで受け取った歌声をデコード
+        const actx = Tone.context.rawContext || Tone.context;
+        const vocalAudioBuffer = await new Promise((resolve, reject) => {
+            actx.decodeAudioData(arrayBuffer, resolve, reject);
+        });
+
+        // --- ここから伴奏と歌声のオフラインミックス処理 ---
+        let maxBeat = 0;
+        notes.forEach(n => { if (n.startBeat + n.duration > maxBeat) maxBeat = n.startBeat + n.duration; });
+        const durationSec = beatToSeconds(maxBeat, currentBpmChanges) + 2.0;
+
+        const mixedBuffer = await Tone.Offline(async () => {
+          // 伴奏（ピアノ）
+          const offlineSampler = new Tone.Sampler(samplerOptions).toDestination();
+          // 歌声（ずんだもん）
+          const vocalPlayer = new Tone.Player(vocalAudioBuffer).toDestination();
+
+          await Tone.loaded();
+
+          // すべてのノートを伴奏としてスケジュール
+          notes.forEach(note => {
+            const startSec = beatToSeconds(note.startBeat, currentBpmChanges);
+            const endSec = beatToSeconds(note.startBeat + note.duration, currentBpmChanges);
+            offlineSampler.triggerAttackRelease(Tone.Frequency(note.midi, "midi").toNote(), Math.max(0.05, endSec - startSec), startSec);
+          });
+
+          // 歌声を再生（出だしの空白はVOICEVOX側で計算済みなので 0秒地点からそのまま再生）
+          vocalPlayer.start(0);
+
+        }, durationSec);
+
+        // ミックス完了したバッファをWAVファイルに変換
+        const wavBlob = audioBufferToWavBlob(mixedBuffer);
+        const audioUrl = URL.createObjectURL(wavBlob);
+        
+        // ブラウザ上で結果を自動再生
+        const mixedAudio = new Audio(audioUrl);
+        mixedAudio.play();
+        
+        // PCへ自動ダウンロード
+        const a = document.createElement('a');
+        a.href = audioUrl;
+        a.download = `zundamon_full_mix_${Date.now()}.wav`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+
+        alert("ミックス処理が完了し、WAVファイルのダウンロードを開始しました！");
+
+      } catch (error) {
+        console.error(error);
+        alert("エラー: " + error.message + "\\nVOICEVOXが正しく起動しているか確認してください。");
+      }
     });
 
     document.getElementById("exportPdfBtn").addEventListener('click', async () => {
@@ -1070,7 +1199,7 @@
       clipboardNotes.forEach(clip => {
         const targetBeat = basePasteBeat + clip.startBeatOffset;
         if (targetBeat >= TOTAL_BEATS) autoExpandMeasures(targetBeat + clip.duration); 
-        const newNote = { id: "n_" + Date.now() + "_" + Math.floor(Math.random() * 10000), midi: clip.midi, startBeat: targetBeat, duration: clip.duration, lyric: clip.lyric || "あ", pitchOffset: clip.pitchOffset || 0.0 };
+        const newNote = { id: "n_" + Date.now() + "_" + Math.floor(Math.random() * 10000), midi: clip.midi, startBeat: targetBeat, duration: clip.duration, lyric: clip.lyric || "", pitchOffset: clip.pitchOffset || 0.0 };
         notes.push(newNote); selectedNoteIds.add(newNote.id);
       });
       scheduleAllNotes();
@@ -1108,7 +1237,6 @@
       }
     }
 
-    // --- MusicXML Export Logic ---
     document.addEventListener('DOMContentLoaded', () => {
       const exportXmlBtn = document.getElementById('exportXmlBtn');
       if (exportXmlBtn) {
@@ -1160,7 +1288,7 @@
         const noteIndex = n.midi % 12;
         const step = noteNames[noteIndex];
         const alter = alters[noteIndex];
-        const lyric = n.lyric || "あ";
+        const lyric = n.lyric || "";
         
         xml += `      <note>\n        <pitch>\n          <step>${step}</step>\n          ${alter ? `<alter>${alter}</alter>\n          ` : ""}<octave>${octave}</octave>\n        </pitch>\n        <duration>${durationTick}</duration>\n        <lyric>\n          <syllable>single</syllable>\n          <text>${lyric}</text>\n        </lyric>\n      </note>\n`;
         currentTick = startTick + durationTick;
@@ -1168,118 +1296,6 @@
       xml += `    </measure>\n  </part>\n</score-partwise>`;
       return xml;
     }
-    // --- End MusicXML Export Logic ---
-
-    // --- VOICEVOX Integration Logic ---
-    document.addEventListener('DOMContentLoaded', () => {
-      const exportXmlBtn = document.getElementById('exportXmlBtn');
-      if (exportXmlBtn) {
-        const vvBtn = document.createElement('button');
-        vvBtn.id = 'playVoicevoxBtn';
-        vvBtn.className = 'action-btn';
-        vvBtn.style.backgroundColor = '#4caf50';
-        vvBtn.style.color = 'white';
-        vvBtn.style.borderColor = '#4caf50';
-        vvBtn.style.marginLeft = '10px';
-        vvBtn.textContent = '🟢 ずんだもんで歌う(VOICEVOX)';
-        exportXmlBtn.parentNode.insertBefore(vvBtn, exportXmlBtn.nextSibling);
-
-        vvBtn.addEventListener('click', async () => {
-          if (notes.length === 0) {
-            alert("歌わせるノートがありません。メロディを入力してください。");
-            return;
-          }
-          
-          alert("VOICEVOXと通信しています... (VOICEVOXアプリを起動しておいてください)");
-          const bpmInput = document.getElementById('bpmInput');
-          const bpmValue = parseFloat(bpmInput ? bpmInput.value : 120) || 120;
-          
-          try {
-            const sorted = [...notes].sort((a, b) => a.startBeat - b.startBeat);
-            let currentBeat = 0;
-            const vvNotes = [];
-            const secPerBeat = 60.0 / bpmValue;
-            
-            for (const n of sorted) {
-              if (n.startBeat > currentBeat) {
-                const restBeats = n.startBeat - currentBeat;
-                vvNotes.push({
-                  key: null,
-                  lyric: "",
-                  frame_length: Math.max(1, Math.round(restBeats * secPerBeat * 93.75))
-                });
-              }
-              
-              const noteBeats = n.duration;
-              vvNotes.push({
-                key: n.midi,
-                lyric: n.lyric || "あ",
-                frame_length: Math.max(1, Math.round(noteBeats * secPerBeat * 93.75))
-              });
-              
-              currentBeat = n.startBeat + n.duration;
-            }
-            
-            const score = { notes: vvNotes };
-            const speakerId = 3; 
-
-            console.log("VOICEVOX Score:", score);
-            const text = sorted.map(n => n.lyric || "あ").join("");
-            
-            const queryRes = await fetch(`http://127.0.0.1:50021/audio_query?text=${encodeURIComponent(text)}&speaker=${speakerId}`, {
-              method: 'POST'
-            });
-            
-            if (!queryRes.ok) throw new Error("VOICEVOXへの接続に失敗しました。VOICEVOXが起動しているか確認してください。");
-            
-            const queryData = await queryRes.json();
-            
-            /* ★ インスペクターで設定したピッチ（イントネーション）を各文字に反映する */
-            let phraseIndex = 0;
-            for(let i=0; i<queryData.accent_phrases.length; i++) {
-                let phrase = queryData.accent_phrases[i];
-                for(let j=0; j<phrase.moras.length; j++) {
-                   if (phraseIndex < sorted.length) {
-                       const midi = sorted[phraseIndex].midi;
-                       const offset = sorted[phraseIndex].pitchOffset || 0.0;
-                       
-                       // MIDI基準ピッチにユーザーが指定したゆくも風オフセットを加算
-                       phrase.moras[j].pitch = 5.0 + (midi - 60) * 0.1 + offset; 
-                       phrase.moras[j].vowel_length = sorted[phraseIndex].duration * secPerBeat;
-                   }
-                   phraseIndex++;
-                }
-            }
-
-            const synthRes = await fetch(`http://127.0.0.1:50021/synthesis?speaker=${speakerId}`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(queryData)
-            });
-
-            if (!synthRes.ok) throw new Error("音声の合成に失敗しました。");
-
-            const audioBlob = await synthRes.blob();
-            const audioUrl = URL.createObjectURL(audioBlob);
-            
-            const audio = new Audio(audioUrl);
-            audio.play();
-            
-            const a = document.createElement('a');
-            a.href = audioUrl;
-            a.download = "zundamon_track.wav";
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-
-          } catch (error) {
-            console.error(error);
-            alert(error.message);
-          }
-        });
-      }
-    });
-    // --- End VOICEVOX Integration Logic ---
 
     window.addEventListener('load', () => {
       let scrollDummy = document.getElementById("scrollDummy");
