@@ -1,0 +1,1293 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>Next-Gen Vertical Piano Roll Sequencer Pro X - 統合最終決定版</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/vexflow/4.2.2/vexflow-min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+  <style>
+    * { 
+      box-sizing: border-box; 
+      margin: 0; 
+      padding: 0; 
+      user-select: none; 
+    }
+    body { 
+      background-color: #111111; 
+      color: #aaaaaa; 
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; 
+      overflow: hidden; 
+      height: 100vh; 
+    }
+    .app-container { 
+      display: flex; 
+      flex-direction: column; 
+      height: 100vh; 
+      width: 100vw; 
+    }
+    .toolbar { 
+      min-height: 50px; 
+      height: auto; 
+      background-color: #1e1e1e; 
+      border-bottom: 1px solid #2d2d2d; 
+      display: flex; 
+      flex-wrap: wrap; 
+      align-items: center; 
+      padding: 8px 20px; 
+      gap: 15px; 
+      z-index: 30; 
+    }
+    .toolbar-section { 
+      display: flex; 
+      align-items: center; 
+      gap: 8px; 
+      font-size: 12px; 
+      white-space: nowrap; 
+    }
+    button, select, input[type="number"], input[type="text"] { 
+      background-color: #2b2b2b; 
+      color: #e0e0e0; 
+      border: 1px solid #3a3a3a; 
+      padding: 6px 12px; 
+      border-radius: 4px; 
+      cursor: pointer; 
+      font-size: 12px; 
+      outline: none; 
+      transition: background-color 0.2s, border-color 0.2s; 
+    }
+    button:hover { 
+      background-color: #3b3b3b; 
+      border-color: #4a4a4a; 
+    }
+    button:disabled { 
+      background-color: #1a1a1a; 
+      color: #555555; 
+      border-color: #222222; 
+      cursor: not-allowed; 
+    }
+    input[type="number"], input[type="text"] { 
+      width: 60px; 
+      text-align: center; 
+      cursor: text; 
+    }
+    .btn-success { background-color: #2e7d32; border-color: #388e3c; }
+    .btn-success:hover { background-color: #388e3c; }
+    .btn-danger { background-color: #c62828; border-color: #d32f2f; }
+    .btn-danger:hover { background-color: #d32f2f; }
+    .tool-group, .history-group { border-left: 1px solid #3a3a3a; padding-left: 12px; }
+    .tool-btn.active { background-color: #00bcd4; border-color: #00e5ff; color: #111111; font-weight: bold; }
+    #toolBpm.active { background-color: #ff9800; border-color: #ffb74d; color: #111111; }
+    
+    /* ワークスペースとインスペクターの横並び用レイアウト */
+    .main-area {
+      display: flex;
+      flex: 1;
+      overflow: hidden;
+      position: relative;
+      width: 100%;
+    }
+    .workspace { 
+      flex: 1; 
+      position: relative; 
+      overflow: auto; 
+      background-color: #111111; 
+      overscroll-behavior-x: none; 
+      overscroll-behavior-y: none; 
+      height: 100%;
+    }
+    .dummy-scroll { 
+      position: absolute; 
+      top: 0; 
+      left: 0; 
+      z-index: 1; 
+      pointer-events: none; 
+    }
+    #sequencerCanvas { 
+      position: sticky; 
+      top: 0; 
+      left: 0; 
+      z-index: 2; 
+      display: block; 
+    }
+    
+    /* 詳細表示（インスペクター）のスタイル */
+    #inspectorPanel {
+      width: 280px;
+      background-color: #1e1e1e;
+      border-left: 1px solid #2d2d2d;
+      padding: 15px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 15px;
+      z-index: 25;
+      box-sizing: border-box;
+      height: 100%;
+    }
+    .inspector-prop {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+      margin-bottom: 5px;
+    }
+    .inspector-prop label {
+      color: #aaaaaa;
+      font-size: 11px;
+    }
+    .yukumo-btn {
+      flex: 1;
+      padding: 4px 2px;
+      font-size: 11px;
+      font-weight: bold;
+      text-align: center;
+      border-radius: 4px;
+      border: 1px solid #3a3a3a;
+      background-color: #2b2b2b;
+      color: #e0e0e0;
+    }
+
+    .keyboard-wrapper { 
+      height: 60px; 
+      background-color: #1a1a1a; 
+      border-top: 3px solid #ff1744; 
+      box-shadow: 0px -4px 15px rgba(255, 23, 68, 0.4); 
+      overflow-x: auto; 
+      overflow-y: hidden; 
+      scrollbar-width: none; 
+      position: relative; 
+      z-index: 20; 
+      width: 100%; 
+    }
+    .keyboard-wrapper::-webkit-scrollbar { display: none; }
+    .keyboard-content { position: relative; display: block; height: 100%; }
+    .key { 
+      position: absolute; 
+      top: 0; 
+      height: 100%; 
+      border-left: 1px solid #333333; 
+      display: flex; 
+      flex-direction: column; 
+      justify-content: center; 
+      align-items: center; 
+      font-size: 9px; 
+      font-weight: bold; 
+      cursor: pointer; 
+      box-sizing: border-box; 
+    }
+    .key.white { background: linear-gradient(to bottom, #e0e0e0 0%, #ffffff 100%); color: #222222; }
+    .key.black { background: linear-gradient(to bottom, #444444 0%, #151515 80%, #222222 100%); color: #ffffff; z-index: 5; }
+    .key.white.active { background: linear-gradient(to bottom, #00e5ff 0%, #00b0ff 100%) !important; color: #111111; }
+    .key.black.active { background: linear-gradient(to bottom, #00b0ff 0%, #006064 100%) !important; color: #ffffff; }
+    #pdf-render-area { display: none; background-color: #ffffff; padding: 40px; width: 800px; }
+    .pdf-measure { margin-bottom: 30px; page-break-inside: avoid; }
+  </style>
+</head>
+<body>
+
+  <div class="app-container">
+    <div class="toolbar">
+      <div class="toolbar-section">
+        <button id="playBtn" class="btn-success">再生</button>
+        <button id="stopBtn" class="btn-danger">停止</button>
+        <button id="loopBtn" class="tool-btn">ループ: OFF</button>
+      </div>
+      
+      <div class="toolbar-section">
+        <button id="zoomOutBtn" class="tool-btn">🔍 縮小</button>
+        <button id="zoomInBtn" class="tool-btn">🔍 拡大</button>
+      </div>
+
+      <div class="toolbar-section">
+        <label for="bpmInput">基本BPM:</label>
+        <input type="number" id="bpmInput" value="120" min="30" max="300">
+      </div>
+
+      <div class="toolbar-section">
+        <label for="snapSelect">スナップ:</label>
+        <select id="snapSelect">
+          <option value="1">1拍 (4分音符)</option>
+          <option value="0.5">1/2拍 (8分音符)</option>
+          <option value="0.25" selected>1/4拍 (16分音符)</option>
+          <option value="0.125">1/8拍 (32分音符)</option>
+          <option value="0.3333333333333333">1/3拍 (4分3連符)</option>
+          <option value="0.16666666666666666">1/6拍 (8分3連符)</option>
+        </select>
+      </div>
+
+      <div class="toolbar-section tool-group">
+        <button id="toolPointer" class="tool-btn active">ポインタ</button>
+        <button id="toolPencil" class="tool-btn">鉛筆</button>
+        <button id="toolEraser" class="tool-btn">消しゴム</button>
+        <button id="toolBpm" class="tool-btn" style="color: #ff9800; border-color: #ff9800;">⚑ BPM変更</button>
+        <button id="toolLyric" class="tool-btn">✎ 歌詞</button>
+      </div>
+
+      <div class="toolbar-section">
+        <button id="addMeasuresBtn" title="上に8小節追加します">+ 小節追加</button>
+      </div>
+
+      <div class="toolbar-section history-group">
+        <button id="undoBtn" title="元に戻す (Ctrl+Z)">↶</button>
+        <button id="redoBtn" title="やり直し (Ctrl+Y)">↷</button>
+      </div>
+
+      <div class="toolbar-section">
+        <button id="saveJsonBtn">保存</button>
+        <button id="loadJsonBtn">読込</button>
+        <button id="exportXmlBtn" class="action-btn" style="background-color:#d81b60; color:white; border-color:#d81b60;">🎤 ボカロ/テト出力(XML)</button>
+        <input type="file" id="jsonFileInput" accept=".json" style="display: none;">
+        <button id="exportWavBtn">WAV</button>
+        <button id="exportPdfBtn">PDF</button>
+      </div>
+    </div>
+
+    <div class="main-area">
+      <div class="workspace" id="workspace">
+        <div class="dummy-scroll" id="scrollDummy"></div>
+        <canvas id="sequencerCanvas"></canvas>
+      </div>
+
+      <div id="inspectorPanel">
+        <h3 style="font-size: 14px; color: #00bcd4; border-bottom: 1px solid #3a3a3a; padding-bottom: 5px; margin-bottom: 5px; font-weight: bold;">詳細表示</h3>
+        <div id="inspectorContent">
+          <p style="color: #666; font-size: 12px; text-align: center; margin-top: 20px;">ノートを選択してください</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="keyboard-wrapper" id="keyboardWrapper">
+      <div class="keyboard-content" id="keyboardContent"></div>
+    </div>
+  </div>
+
+  <div id="pdf-render-area"></div>
+
+  <script>
+    let zoomLevel = 1.0; 
+    let NOTE_WIDTH = 24;
+    let BEAT_HEIGHT = 80;
+    const TOTAL_KEYS = 88;
+    const START_MIDI = 21;
+    const END_MIDI = 108;
+
+    let TOTAL_BEATS = 128;
+    let TOTAL_HEIGHT = TOTAL_BEATS * BEAT_HEIGHT;
+    let TOTAL_WIDTH = TOTAL_KEYS * NOTE_WIDTH;
+
+    let bpm = 120;
+    let currentBpmChanges = [{ beat: 0.0, bpm: 120 }]; 
+    let snapUnit = 0.25; 
+    let currentTool = 'pointer'; 
+    let notes = []; 
+    let currentBeat = 0;
+    let clipboardNotes = [];
+
+    let isLoopMode = false;
+    let selectedNoteIds = new Set(); 
+    let isSelectingArea = false;     
+    let areaSelectionStart = { x: 0, y: 0 }; 
+    let areaSelectionEnd = { x: 0, y: 0 };   
+
+    let isDragging = false;
+    let dragMode = null;
+    let dragStartMouseX = 0;
+    let dragStartMouseY = 0;
+    let dragStartNoteStates = []; 
+
+    let isBpmSelecting = false;
+    let bpmSelectStartBeat = 0;
+    let bpmSelectEndBeat = 0;
+
+    const MAX_HISTORY = 100;
+    let undoStack = [];
+    let redoStack = [];
+    let lastActiveNotesKey = "";
+
+    const NOTE_NAMES_JA = ["ド", "ド#", "レ", "レ#", "ミ", "ファ", "ファ#", "ソ", "ソ#", "ラ", "ラ#", "シ"];
+    const BLACK_KEY_INDEXES = [1, 3, 6, 8, 10]; 
+
+    const workspace = document.getElementById("workspace");
+    const canvas = document.getElementById("sequencerCanvas");
+    const ctx = canvas.getContext("2d");
+    const keyboardWrapper = document.getElementById("keyboardWrapper");
+    const keyboardContent = document.getElementById("keyboardContent");
+
+    window.addEventListener('beforeunload', (e) => {
+      const msg = "編集中のデータが失われる可能性があります。";
+      e.preventDefault(); e.returnValue = msg; return msg;
+    });
+
+    const sampler = new Tone.Sampler({
+      urls: {
+        "A0": "A0.mp3", "C1": "C1.mp3", "D#1": "Ds1.mp3", "F#1": "Fs1.mp3",
+        "A1": "A1.mp3", "C2": "C2.mp3", "D#2": "Ds2.mp3", "F#2": "Fs2.mp3",
+        "A2": "A2.mp3", "C3": "C3.mp3", "D#3": "Ds3.mp3", "F#3": "Fs3.mp3",
+        "A3": "A3.mp3", "C4": "C4.mp3", "D#4": "Ds4.mp3", "F#4": "Fs4.mp3",
+        "A4": "A4.mp3", "C5": "C5.mp3", "D#5": "Ds5.mp3", "F#5": "Fs5.mp3",
+        "A5": "A5.mp3", "C6": "C6.mp3", "D#6": "Ds6.mp3", "F#6": "Fs6.mp3",
+        "A6": "A6.mp3", "C7": "C7.mp3", "D#7": "Ds7.mp3", "F#7": "Fs7.mp3",
+        "A7": "A7.mp3", "C8": "C8.mp3"
+      },
+      release: 1.2,
+      baseUrl: "https://tonejs.github.io/audio/salamander/"
+    }).toDestination();
+
+    function getBpmAtBeat(beat, changes) {
+      let activeBpm = changes[0].bpm;
+      for (let i = 0; i < changes.length; i++) {
+        if (changes[i].beat <= beat) activeBpm = changes[i].bpm; else break;
+      }
+      return activeBpm;
+    }
+
+    function beatToSeconds(targetBeat, bpmChanges) {
+      if (!bpmChanges || bpmChanges.length === 0) return targetBeat * (60 / bpm);
+      const sorted = [...bpmChanges].sort((a, b) => a.beat - b.beat);
+      if (sorted[0].beat !== 0) sorted.unshift({ beat: 0, bpm: bpm });
+      
+      let totalSeconds = 0, currentB = 0, currentBpm = sorted[0].bpm;
+      for (let i = 1; i < sorted.length; i++) {
+        if (targetBeat <= sorted[i].beat) break;
+        totalSeconds += (sorted[i].beat - currentB) * (60 / currentBpm);
+        currentB = sorted[i].beat; currentBpm = sorted[i].bpm;
+      }
+      return totalSeconds + (targetBeat - currentB) * (60 / currentBpm);
+    }
+
+    function secondsToBeat(targetSeconds, bpmChanges) {
+      if (!bpmChanges || bpmChanges.length === 0) return targetSeconds / (60 / bpm);
+      const sorted = [...bpmChanges].sort((a, b) => a.beat - b.beat);
+      if (sorted[0].beat !== 0) sorted.unshift({ beat: 0, bpm: bpm });
+      
+      let totalSeconds = 0, currentB = 0, currentBpm = sorted[0].bpm;
+      for (let i = 1; i < sorted.length; i++) {
+        const deltaSeconds = (sorted[i].beat - currentB) * (60 / currentBpm);
+        if (targetSeconds <= totalSeconds + deltaSeconds) break;
+        totalSeconds += deltaSeconds;
+        currentB = sorted[i].beat;
+        currentBpm = sorted[i].bpm;
+      }
+      return currentB + (targetSeconds - totalSeconds) / (60 / currentBpm);
+    }
+
+    function updateZoom(newZoom) {
+      const minZoom = workspace.clientWidth / (TOTAL_KEYS * 24);
+      zoomLevel = Math.max(minZoom, Math.min(3.0, newZoom)); 
+      NOTE_WIDTH = 24 * zoomLevel; BEAT_HEIGHT = 80 * zoomLevel;
+      TOTAL_HEIGHT = TOTAL_BEATS * BEAT_HEIGHT; TOTAL_WIDTH = TOTAL_KEYS * NOTE_WIDTH;
+      
+      const scrollDummy = document.getElementById("scrollDummy");
+      if (scrollDummy) { scrollDummy.style.height = TOTAL_HEIGHT + "px"; scrollDummy.style.width = TOTAL_WIDTH + "px"; }
+      keyboardContent.style.width = TOTAL_WIDTH + "px";
+      
+      document.querySelectorAll(".key").forEach(k => {
+        const m = parseInt(k.dataset.midi);
+        k.style.width = NOTE_WIDTH + "px"; k.style.left = ((m - START_MIDI) * NOTE_WIDTH) + "px";
+      });
+      
+      const centerBeat = (TOTAL_HEIGHT - (workspace.scrollTop + workspace.clientHeight / 2)) / BEAT_HEIGHT;
+      workspace.scrollTop = Math.max(0, TOTAL_HEIGHT - (centerBeat * BEAT_HEIGHT) - workspace.clientHeight / 2);
+    }
+
+    function resizeCanvas() { 
+      canvas.width = workspace.clientWidth; canvas.height = workspace.clientHeight; 
+      updateZoom(zoomLevel); 
+      keyboardWrapper.style.paddingRight = (workspace.offsetWidth - workspace.clientWidth) + "px";
+    }
+
+    workspace.addEventListener('scroll', () => { keyboardWrapper.scrollLeft = workspace.scrollLeft; });
+
+    function addMeasures(measuresToAdd) {
+      TOTAL_BEATS += measuresToAdd * 4; TOTAL_HEIGHT = TOTAL_BEATS * BEAT_HEIGHT;
+      let scrollDummy = document.getElementById("scrollDummy");
+      if (scrollDummy) scrollDummy.style.height = TOTAL_HEIGHT + "px";
+      workspace.scrollTop += measuresToAdd * 4 * BEAT_HEIGHT;
+    }
+
+    function autoExpandMeasures(targetBeat) {
+      if (targetBeat >= TOTAL_BEATS) addMeasures(Math.ceil((targetBeat - TOTAL_BEATS + 4) / 4));
+    }
+    document.getElementById("addMeasuresBtn").addEventListener('click', () => addMeasures(8));
+    function isBlackKey(midi) { return BLACK_KEY_INDEXES.includes(midi % 12); }
+    function getNoteText(midi) {
+      const noteName = NOTE_NAMES_JA[midi % 12];
+      if (isBlackKey(midi)) return noteName; 
+      return (noteName === "ド" && Math.floor(midi / 12) - 1 === 4) ? "ド" : noteName;
+    }
+    function drawRoundedRect(c, x, y, width, height, radius) {
+      c.beginPath(); c.moveTo(x + radius, y); c.lineTo(x + width - radius, y);
+      c.quadraticCurveTo(x + width, y, x + width, y + radius); c.lineTo(x + width, y + height - radius);
+      c.quadraticCurveTo(x + width, y + height, x + width - radius, y + height); c.lineTo(x + radius, y + height);
+      c.quadraticCurveTo(x, y + height, x, y + height - radius); c.lineTo(x, y + radius);
+      c.quadraticCurveTo(x, y, x + radius, y); c.closePath();
+    }
+
+    function pushHistory() {
+      undoStack.push({ notes: notes.map(n => ({...n})), bpmChanges: currentBpmChanges.map(c => ({...c})) });
+      if (undoStack.length > MAX_HISTORY) undoStack.shift();
+      redoStack = []; updateHistoryButtons();
+    }
+    function executeUndo() {
+      if (undoStack.length === 0) return;
+      redoStack.push({ notes: notes.map(n => ({...n})), bpmChanges: currentBpmChanges.map(c => ({...c})) });
+      const state = undoStack.pop(); notes = state.notes; currentBpmChanges = state.bpmChanges;
+      document.getElementById('bpmInput').value = currentBpmChanges[0].bpm;
+      selectedNoteIds.clear(); scheduleAllNotes(); updateHistoryButtons(); updateInspector();
+    }
+    function executeRedo() {
+      if (redoStack.length === 0) return;
+      undoStack.push({ notes: notes.map(n => ({...n})), bpmChanges: currentBpmChanges.map(c => ({...c})) });
+      const state = redoStack.pop(); notes = state.notes; currentBpmChanges = state.bpmChanges;
+      document.getElementById('bpmInput').value = currentBpmChanges[0].bpm;
+      selectedNoteIds.clear(); scheduleAllNotes(); updateHistoryButtons(); updateInspector();
+    }
+    function updateHistoryButtons() {
+      document.getElementById("undoBtn").disabled = (undoStack.length === 0);
+      document.getElementById("redoBtn").disabled = (redoStack.length === 0);
+    }
+
+    function scheduleAllNotes() {
+      Tone.Transport.cancel(0);
+      
+      let maxBeat = 0;
+      for(let i=0; i<notes.length; i++) { if (notes[i].startBeat + notes[i].duration > maxBeat) maxBeat = notes[i].startBeat + notes[i].duration; }
+      
+      if (isLoopMode && notes.length > 0) {
+        Tone.Transport.loop = true; Tone.Transport.loopStart = 0; 
+        Tone.Transport.loopEnd = beatToSeconds(maxBeat + 2, currentBpmChanges);
+      } else { Tone.Transport.loop = false; }
+
+      notes.forEach(note => {
+        const startSec = beatToSeconds(note.startBeat, currentBpmChanges);
+        const endSec = beatToSeconds(note.startBeat + note.duration, currentBpmChanges);
+        const durationSec = Math.max(0.05, endSec - startSec);
+        Tone.Transport.schedule((time) => {
+          sampler.triggerAttackRelease(Tone.Frequency(note.midi, "midi").toNote(), durationSec, time);
+        }, startSec);
+      });
+    }
+
+    function getVirtualCoordinates(e) {
+      const rect = canvas.getBoundingClientRect();
+      const absX = (e.clientX - rect.left) + workspace.scrollLeft;
+      const absY = (e.clientY - rect.top) + workspace.scrollTop;
+      return { midi: START_MIDI + Math.floor(absX / NOTE_WIDTH), beat: (TOTAL_HEIGHT - absY) / BEAT_HEIGHT, absX, absY };
+    }
+
+    /* --- 詳細表示（インスペクター）表示更新ロジック --- */
+    function updateInspector() {
+      const content = document.getElementById("inspectorContent");
+      if (selectedNoteIds.size === 0) {
+        content.innerHTML = `<p style="color: #666; font-size: 12px; text-align: center; margin-top: 20px;">ノートを選択してください</p>`;
+        return;
+      }
+      
+      const targetId = Array.from(selectedNoteIds)[selectedNoteIds.size - 1]; // 最後に選択したノート
+      const note = notes.find(n => n.id === targetId);
+      if (!note) {
+        content.innerHTML = `<p style="color: #666; font-size: 12px; text-align: center; margin-top: 20px;">ノートを選択してください</p>`;
+        return;
+      }
+
+      if (note.pitchOffset == null) note.pitchOffset = 0.0;
+
+      content.innerHTML = `
+        <div style="display: flex; flex-direction: column; gap: 12px; font-size: 12px;">
+          <p style="color: #888;">選択中: ${selectedNoteIds.size} 件 ${selectedNoteIds.size > 1 ? '(最後を選択表示)' : ''}</p>
+          
+          <div class="inspector-prop">
+            <label>歌詞</label>
+            <input type="text" id="inspLyric" value="${note.lyric || 'あ'}" style="background-color: #2b2b2b; color: #fff; border: 1px solid #3a3a3a; padding: 5px; border-radius: 4px; width:100%; text-align:left;">
+          </div>
+
+          <div class="inspector-prop">
+            <label>音程 (MIDI)</label>
+            <input type="number" id="inspMidi" value="${note.midi}" min="${START_MIDI}" max="${END_MIDI}" style="background-color: #2b2b2b; color: #fff; border: 1px solid #3a3a3a; padding: 5px; border-radius: 4px; width:100%;">
+          </div>
+
+          <div class="inspector-prop">
+            <label>開始拍 (Beat)</label>
+            <input type="number" id="inspStart" value="${note.startBeat}" step="0.125" min="0" style="background-color: #2b2b2b; color: #fff; border: 1px solid #3a3a3a; padding: 5px; border-radius: 4px; width:100%;">
+          </div>
+
+          <div class="inspector-prop">
+            <label>長さ (Duration)</label>
+            <input type="number" id="inspDuration" value="${note.duration}" step="0.125" min="0.125" style="background-color: #2b2b2b; color: #fff; border: 1px solid #3a3a3a; padding: 5px; border-radius: 4px; width:100%;">
+          </div>
+
+          <div class="inspector-prop" style="margin-top: 8px; border-top: 1px solid #3a3a3a; padding-top: 10px;">
+            <label style="color: #00bcd4; font-weight: bold; font-size: 11px;">イントネーション調整 (ゆくも風)</label>
+            
+            <div style="display: flex; justify-content: space-between; background-color: #151515; padding: 8px; border-radius: 6px; align-items: center; border: 1px solid #2a2a2a; margin-top:4px;">
+              <span style="font-size: 14px; font-weight: bold; color: #fff; width: 40px; text-align: center;" id="inspYukumoChar">${note.lyric || 'あ'}</span>
+              <div style="display: flex; flex-direction: column; gap: 3px; width: 100px;">
+                <button id="btnYukumoHigh" style="padding: 2px 5px; font-size: 10px; background-color: ${note.pitchOffset > 0.2 ? '#ff9800' : '#2b2b2b'}; color: ${note.pitchOffset > 0.2 ? '#111' : '#e0e0e0'}; font-weight: bold; border-color:#4a4a4a;">▲ 高</button>
+                <button id="btnYukumoNormal" style="padding: 2px 5px; font-size: 10px; background-color: ${Math.abs(note.pitchOffset) <= 0.2 ? '#00bcd4' : '#2b2b2b'}; color: ${Math.abs(note.pitchOffset) <= 0.2 ? '#111' : '#e0e0e0'}; font-weight: bold; border-color:#4a4a4a;">■ 中</button>
+                <button id="btnYukumoLow" style="padding: 2px 5px; font-size: 10px; background-color: ${note.pitchOffset < -0.2 ? '#2196f3' : '#2b2b2b'}; color: ${note.pitchOffset < -0.2 ? '#fff' : '#e0e0e0'}; font-weight: bold; border-color:#4a4a4a;">▼ 低</button>
+              </div>
+            </div>
+
+            <div style="margin-top: 10px;">
+              <div style="display: flex; justify-content: space-between; color: #aaa; font-size: 11px;">
+                <span>ピッチ微調整値:</span>
+                <span id="inspPitchVal" style="color: #00e5ff; font-weight: bold;">${note.pitchOffset.toFixed(2)}</span>
+              </div>
+              <input type="range" id="inspPitchSlider" min="-2.0" max="2.0" step="0.05" value="${note.pitchOffset}" style="width: 100%; margin-top: 4px; cursor: pointer;">
+            </div>
+          </div>
+        </div>
+      `;
+
+      // イベントリスナー紐付け
+      document.getElementById("inspLyric").addEventListener("change", (e) => {
+        pushHistory(); note.lyric = e.target.value;
+        const cSpan = document.getElementById("inspYukumoChar"); if (cSpan) cSpan.textContent = e.target.value;
+        scheduleAllNotes();
+      });
+      document.getElementById("inspMidi").addEventListener("change", (e) => {
+        pushHistory(); note.midi = Math.max(START_MIDI, Math.min(END_MIDI, parseInt(e.target.value) || 60)); scheduleAllNotes();
+      });
+      document.getElementById("inspStart").addEventListener("change", (e) => {
+        pushHistory(); note.startBeat = Math.max(0, parseFloat(e.target.value) || 0); autoExpandMeasures(note.startBeat + note.duration); scheduleAllNotes();
+      });
+      document.getElementById("inspDuration").addEventListener("change", (e) => {
+        pushHistory(); note.duration = Math.max(0.125, parseFloat(e.target.value) || 0.25); autoExpandMeasures(note.startBeat + note.duration); scheduleAllNotes();
+      });
+
+      const slider = document.getElementById("inspPitchSlider");
+      const valLabel = document.getElementById("inspPitchVal");
+
+      function updateIntonationButtons(val) {
+        document.getElementById("btnYukumoHigh").style.backgroundColor = val > 0.2 ? '#ff9800' : '#2b2b2b';
+        document.getElementById("btnYukumoHigh").style.color = val > 0.2 ? '#111' : '#e0e0e0';
+        document.getElementById("btnYukumoNormal").style.backgroundColor = Math.abs(val) <= 0.2 ? '#00bcd4' : '#2b2b2b';
+        document.getElementById("btnYukumoNormal").style.color = Math.abs(val) <= 0.2 ? '#111' : '#e0e0e0';
+        document.getElementById("btnYukumoLow").style.backgroundColor = val < -0.2 ? '#2196f3' : '#2b2b2b';
+        document.getElementById("btnYukumoLow").style.color = val < -0.2 ? '#fff' : '#e0e0e0';
+      }
+
+      slider.addEventListener("input", (e) => {
+        const val = parseFloat(e.target.value); note.pitchOffset = val;
+        valLabel.textContent = val.toFixed(2); updateIntonationButtons(val);
+      });
+      slider.addEventListener("change", () => { pushHistory(); scheduleAllNotes(); });
+
+      document.getElementById("btnYukumoHigh").addEventListener("click", () => {
+        pushHistory(); note.pitchOffset = 0.5; slider.value = 0.5; valLabel.textContent = "0.50"; updateIntonationButtons(0.5); scheduleAllNotes();
+      });
+      document.getElementById("btnYukumoNormal").addEventListener("click", () => {
+        pushHistory(); note.pitchOffset = 0.0; slider.value = 0.0; valLabel.textContent = "0.00"; updateIntonationButtons(0.0); scheduleAllNotes();
+      });
+      document.getElementById("btnYukumoLow").addEventListener("click", () => {
+        pushHistory(); note.pitchOffset = -0.5; slider.value = -0.5; valLabel.textContent = "-0.50"; updateIntonationButtons(-0.5); scheduleAllNotes();
+      });
+    }
+
+    canvas.addEventListener('mousedown', async (e) => {
+      if (e.button !== 0) return;
+      await Tone.start(); 
+      const { midi, beat, absX, absY } = getVirtualCoordinates(e);
+      if (midi < START_MIDI || midi > END_MIDI || beat < 0) return; 
+      const snapBeat = Math.floor(beat / snapUnit) * snapUnit;
+      autoExpandMeasures(snapBeat + snapUnit); 
+
+      if (currentTool === 'bpm') {
+        isBpmSelecting = true; bpmSelectStartBeat = snapBeat; bpmSelectEndBeat = snapBeat;
+        return;
+      }
+      
+      if (currentTool === 'pencil') {
+        const exist = notes.find(n => n.midi === midi && snapBeat >= n.startBeat && snapBeat < n.startBeat + n.duration);
+        if (!exist) {
+          pushHistory();
+          const newNote = { id: "n_" + Date.now() + "_" + Math.floor(Math.random() * 1000), midi, startBeat: snapBeat, duration: snapUnit, lyric: "あ", pitchOffset: 0.0 };
+          notes.push(newNote); scheduleAllNotes();
+          sampler.triggerAttackRelease(Tone.Frequency(midi, "midi").toNote(), snapUnit * (60 / getBpmAtBeat(snapBeat, currentBpmChanges)));
+          selectedNoteIds.clear(); selectedNoteIds.add(newNote.id);
+          updateInspector();
+        }
+      } else if (currentTool === 'lyric') {
+        const targetNote = notes.find(n => n.midi === midi && snapBeat >= n.startBeat && snapBeat < n.startBeat + n.duration);
+        if (targetNote) {
+          const newLyric = prompt("歌詞を入力してください（ひらがな推奨）:", targetNote.lyric || "あ");
+          if (newLyric !== null) {
+            pushHistory();
+            targetNote.lyric = newLyric;
+            scheduleAllNotes();
+            updateInspector();
+            requestAnimationFrame(draw);
+          }
+        }
+      } else if (currentTool === 'eraser') {
+        const index = notes.findIndex(n => n.midi === midi && beat >= n.startBeat && beat <= n.startBeat + n.duration);
+        if (index !== -1) { 
+          pushHistory(); selectedNoteIds.delete(notes[index].id); notes.splice(index, 1); scheduleAllNotes(); updateInspector();
+        } else {
+          let erasedBpm = false;
+          for (let i = 1; i < currentBpmChanges.length; i++) {
+            if (Math.abs(beat - currentBpmChanges[i].beat) * BEAT_HEIGHT < 15) {
+              pushHistory(); currentBpmChanges.splice(i, 1); erasedBpm = true; break;
+            }
+          }
+          if (erasedBpm) scheduleAllNotes();
+        }
+      } else if (currentTool === 'pointer') {
+        const clickedNote = notes.find(n => n.midi === midi && beat >= n.startBeat && beat <= n.startBeat + n.duration);
+        if (clickedNote) {
+          if (!e.shiftKey && !selectedNoteIds.has(clickedNote.id)) { selectedNoteIds.clear(); selectedNoteIds.add(clickedNote.id); }
+          else if (e.shiftKey) { if (selectedNoteIds.has(clickedNote.id)) { selectedNoteIds.delete(clickedNote.id); updateInspector(); return; } else { selectedNoteIds.add(clickedNote.id); } }
+          isDragging = true; dragStartMouseX = absX; dragStartMouseY = absY;
+          
+          const noteTopY = TOTAL_HEIGHT - ((clickedNote.startBeat + clickedNote.duration) * BEAT_HEIGHT);
+          const noteBottomY = TOTAL_HEIGHT - (clickedNote.startBeat * BEAT_HEIGHT);
+          if (absY >= noteTopY && absY <= noteTopY + 8) dragMode = 'resize-end';
+          else if (absY >= noteBottomY - 8 && absY <= noteBottomY) dragMode = 'resize-start';
+          else dragMode = 'move';
+          dragStartNoteStates = notes.filter(n => selectedNoteIds.has(n.id)).map(n => ({ ...n }));
+          updateInspector();
+        } else {
+          if (!e.shiftKey) selectedNoteIds.clear();
+          isSelectingArea = true; areaSelectionStart = { x: absX, y: absY }; areaSelectionEnd = { x: absX, y: absY };
+          updateInspector();
+        }
+      }
+    });
+
+    canvas.addEventListener('mousemove', (e) => {
+      const { midi, beat, absX, absY } = getVirtualCoordinates(e);
+      
+      if (isBpmSelecting) {
+        bpmSelectEndBeat = Math.floor(beat / snapUnit) * snapUnit;
+        return;
+      }
+
+      if (!isDragging && !isSelectingArea) {
+        if (currentTool === 'pointer') {
+          const target = notes.find(n => n.midi === midi && beat >= n.startBeat && beat <= n.startBeat + n.duration);
+          if (target) {
+            const noteTopY = TOTAL_HEIGHT - ((target.startBeat + target.duration) * BEAT_HEIGHT);
+            const noteBottomY = TOTAL_HEIGHT - (target.startBeat * BEAT_HEIGHT);
+            if (absY >= noteTopY && absY <= noteTopY + 8) canvas.style.cursor = 'n-resize';
+            else if (absY >= noteBottomY - 8 && absY <= noteBottomY) canvas.style.cursor = 's-resize';
+            else canvas.style.cursor = 'move';
+          } else canvas.style.cursor = 'default';
+        } else if (currentTool === 'pencil') canvas.style.cursor = 'crosshair';
+        else if (currentTool === 'eraser') canvas.style.cursor = 'no-drop';
+        else if (currentTool === 'bpm') canvas.style.cursor = 'text';
+        return;
+      }
+      
+      if (isSelectingArea) {
+        areaSelectionEnd = { x: absX, y: absY };
+        const xMin = Math.min(areaSelectionStart.x, areaSelectionEnd.x), xMax = Math.max(areaSelectionStart.x, areaSelectionEnd.x);
+        const yMin = Math.min(areaSelectionStart.y, areaSelectionEnd.y), yMax = Math.max(areaSelectionStart.y, areaSelectionEnd.y);
+        notes.forEach(note => {
+          const nXMin = (note.midi - START_MIDI) * NOTE_WIDTH, nXMax = nXMin + NOTE_WIDTH;
+          const nYMin = TOTAL_HEIGHT - ((note.startBeat + note.duration) * BEAT_HEIGHT), nYMax = TOTAL_HEIGHT - (note.startBeat * BEAT_HEIGHT);
+          if (xMin < nXMax && xMax > nXMin && yMin < nYMax && yMax > nYMin) selectedNoteIds.add(note.id);
+          else if (!e.shiftKey) selectedNoteIds.delete(note.id);
+        });
+      } 
+      
+      if (isDragging) {
+        const deltaMidi = Math.round((absX - dragStartMouseX) / NOTE_WIDTH), deltaBeat = (dragStartMouseY - absY) / BEAT_HEIGHT;
+        if (dragMode === 'move') {
+          let fDMidi = deltaMidi, fDBeat = deltaBeat;
+          dragStartNoteStates.forEach(s => {
+            if (s.midi + fDMidi < START_MIDI) fDMidi = START_MIDI - s.midi;
+            if (s.midi + fDMidi > END_MIDI) fDMidi = END_MIDI - s.midi;
+            if (s.startBeat + fDBeat < 0) fDBeat = -s.startBeat;
+          });
+          dragStartNoteStates.forEach(s => {
+            const t = notes.find(n => n.id === s.id);
+            if (t) { t.midi = s.midi + fDMidi; t.startBeat = Math.max(0, Math.floor((s.startBeat + fDBeat) / snapUnit) * snapUnit); autoExpandMeasures(t.startBeat + t.duration); }
+          });
+        } else if (dragMode === 'resize-end') {
+          let fDBeat = deltaBeat;
+          dragStartNoteStates.forEach(s => { if (s.duration + fDBeat < snapUnit) fDBeat = snapUnit - s.duration; });
+          dragStartNoteStates.forEach(s => {
+            const t = notes.find(n => n.id === s.id);
+            if (t) { t.duration = Math.max(snapUnit, Math.round((s.duration + fDBeat) / snapUnit) * snapUnit); autoExpandMeasures(t.startBeat + t.duration); }
+          });
+        } else if (dragMode === 'resize-start') {
+          let fDBeat = deltaBeat;
+          dragStartNoteStates.forEach(s => { if (s.startBeat + fDBeat < 0) fDBeat = -s.startBeat; if (s.duration - fDBeat < snapUnit) fDBeat = s.duration - snapUnit; });
+          dragStartNoteStates.forEach(s => {
+            const t = notes.find(n => n.id === s.id);
+            if (t) { let sb = Math.max(0, Math.round((s.startBeat + fDBeat) / snapUnit) * snapUnit); let dur = s.duration - (sb - s.startBeat); if (dur >= snapUnit) { t.startBeat = sb; t.duration = dur; } }
+          });
+        }
+      }
+    });
+
+    canvas.addEventListener('mouseup', () => {
+      if (isDragging) { isDragging = false; pushHistory(); scheduleAllNotes(); updateInspector(); }
+      if (isSelectingArea) { isSelectingArea = false; updateInspector(); }
+      if (isBpmSelecting) {
+        isBpmSelecting = false;
+        let start = Math.min(bpmSelectStartBeat, bpmSelectEndBeat);
+        let end = Math.max(bpmSelectStartBeat, bpmSelectEndBeat);
+        const newBpmStr = prompt(`${start}拍 ${start!==end ? '〜 '+end+'拍' : ''} から適用する新しいBPMを入力してください:`, getBpmAtBeat(start, currentBpmChanges));
+        const newBpm = parseFloat(newBpmStr);
+        
+        if (!isNaN(newBpm) && newBpm >= 10 && newBpm <= 500) {
+          pushHistory();
+          let revertBpm = getBpmAtBeat(end, currentBpmChanges);
+          currentBpmChanges = currentBpmChanges.filter(c => c.beat < start || c.beat >= end);
+          currentBpmChanges = currentBpmChanges.filter(c => c.beat !== start);
+          currentBpmChanges.push({ beat: start, bpm: newBpm });
+          if (start !== end) {
+            currentBpmChanges = currentBpmChanges.filter(c => c.beat !== end);
+            currentBpmChanges.push({ beat: end, bpm: revertBpm });
+          }
+          currentBpmChanges.sort((a, b) => a.beat - b.beat);
+          if (currentBpmChanges[0].beat !== 0) currentBpmChanges.unshift({ beat: 0, bpm: bpm });
+          if (start === 0) { bpm = newBpm; document.getElementById('bpmInput').value = newBpm; }
+          scheduleAllNotes();
+        }
+      }
+    });
+
+    function draw() {
+      let scrollTop = workspace.scrollTop; 
+      let scrollLeft = workspace.scrollLeft;
+
+      if (Tone.Transport.state === "started") {
+        currentBeat = secondsToBeat(Tone.Transport.seconds, currentBpmChanges); 
+        autoExpandMeasures(currentBeat + 4);
+        const playheadY = TOTAL_HEIGHT - (currentBeat * BEAT_HEIGHT);
+        scrollTop = Math.max(0, playheadY - canvas.height); 
+        workspace.scrollTop = scrollTop; 
+      }
+
+      keyboardWrapper.scrollLeft = scrollLeft;
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      const startVisibleBeat = (TOTAL_HEIGHT - (scrollTop + canvas.height)) / BEAT_HEIGHT;
+      const endVisibleBeat = (TOTAL_HEIGHT - scrollTop) / BEAT_HEIGHT;
+
+      for (let i = 0; i < TOTAL_KEYS; i++) {
+        const x = i * NOTE_WIDTH - scrollLeft;
+        if (x + NOTE_WIDTH < 0 || x > canvas.width) continue;
+        ctx.fillStyle = isBlackKey(START_MIDI + i) ? "#161616" : "#1e1e1e"; ctx.fillRect(x, 0, NOTE_WIDTH, canvas.height);
+        ctx.strokeStyle = "#252525"; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(x + NOTE_WIDTH, 0); ctx.lineTo(x + NOTE_WIDTH, canvas.height); ctx.stroke();
+      }
+
+      for (let b = Math.floor(Math.max(0, startVisibleBeat)); b <= Math.ceil(endVisibleBeat); b++) {
+        const y = TOTAL_HEIGHT - (b * BEAT_HEIGHT) - scrollTop;
+        if (y < 0 || y > canvas.height) continue;
+        const isMeasureHead = (b % 4 === 0);
+        ctx.strokeStyle = isMeasureHead ? "#444444" : "#262626"; ctx.lineWidth = isMeasureHead ? 2 : 1;
+        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke();
+        if (isMeasureHead) { ctx.fillStyle = "rgba(0, 229, 255, 0.4)"; ctx.font = "bold 10px monospace"; ctx.fillText(`M.${(b/4)+1}`, 8, y - 4); }
+      }
+
+      if (currentBpmChanges && currentBpmChanges.length > 0) {
+        currentBpmChanges.forEach(change => {
+          if (change.beat >= startVisibleBeat && change.beat <= endVisibleBeat) {
+            const y = TOTAL_HEIGHT - (change.beat * BEAT_HEIGHT) - scrollTop;
+            ctx.save();
+            ctx.strokeStyle = "rgba(255, 152, 0, 0.8)"; ctx.lineWidth = 2; ctx.setLineDash([6, 4]);
+            ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke();
+            ctx.fillStyle = "#ff9800"; ctx.font = "bold 11px sans-serif"; ctx.fillText(`⚑ BPM: ${change.bpm}`, 15, y - 5);
+            ctx.restore();
+          }
+        });
+      }
+
+      if (isBpmSelecting) {
+        ctx.save();
+        ctx.fillStyle = "rgba(255, 152, 0, 0.2)"; ctx.strokeStyle = "#ff9800"; ctx.lineWidth = 1;
+        const y1 = TOTAL_HEIGHT - (bpmSelectStartBeat * BEAT_HEIGHT) - scrollTop;
+        const y2 = TOTAL_HEIGHT - (bpmSelectEndBeat * BEAT_HEIGHT) - scrollTop;
+        const minY = Math.min(y1, y2); const h = Math.abs(y2 - y1);
+        ctx.fillRect(0, minY, canvas.width, h); ctx.strokeRect(0, minY, canvas.width, h);
+        if (h === 0) { ctx.beginPath(); ctx.moveTo(0, minY); ctx.lineTo(canvas.width, minY); ctx.stroke(); }
+        ctx.restore();
+      }
+
+      let activeMidiNotes = new Set();
+      notes.forEach(note => {
+        const noteX = (note.midi - START_MIDI) * NOTE_WIDTH - scrollLeft;
+        const noteY = TOTAL_HEIGHT - ((note.startBeat + note.duration) * BEAT_HEIGHT) - scrollTop;
+        const noteH = note.duration * BEAT_HEIGHT;
+
+        if (noteX + NOTE_WIDTH < 0 || noteX > canvas.width || noteY + noteH < 0 || noteY > canvas.height) return;
+
+        const isSelected = selectedNoteIds.has(note.id);
+        drawRoundedRect(ctx, noteX + 1, noteY + 1, NOTE_WIDTH - 2, noteH - 2, 4);
+        const grad = ctx.createLinearGradient(noteX, noteY, noteX, noteY + noteH);
+        if (isSelected) { grad.addColorStop(0, "#fff176"); grad.addColorStop(1, "#f57f17"); }
+        else { grad.addColorStop(0, "#00e5ff"); grad.addColorStop(1, "#007c91"); }
+        ctx.fillStyle = grad; ctx.fill();
+        ctx.strokeStyle = isSelected ? "#ffffff" : "#80f3ff"; ctx.lineWidth = isSelected ? 2 : 1; ctx.stroke();
+        
+        if (noteH > 15) {
+          ctx.fillStyle = "#111111"; ctx.font = `bold ${Math.max(6, 9 * zoomLevel)}px sans-serif`;
+          ctx.textAlign = "center"; ctx.textBaseline = "middle";
+          ctx.fillText(note.lyric ? note.lyric : getNoteText(note.midi), noteX + NOTE_WIDTH / 2, noteY + noteH / 2);
+        }
+
+        if (Tone.Transport.state === "started" && currentBeat >= note.startBeat && currentBeat < note.startBeat + note.duration) {
+          activeMidiNotes.add(note.midi);
+        }
+      });
+
+      const activeNotesKey = Array.from(activeMidiNotes).sort().join(",");
+      if (activeNotesKey !== lastActiveNotesKey) {
+        document.querySelectorAll('.key').forEach(k => {
+          const m = parseInt(k.dataset.midi);
+          if (activeMidiNotes.has(m)) k.classList.add('active'); else k.classList.remove('active');
+        });
+        lastActiveNotesKey = activeNotesKey;
+      }
+
+      if (Tone.Transport.state === "started") {
+        const playheadCanvasY = TOTAL_HEIGHT - (currentBeat * BEAT_HEIGHT) - scrollTop;
+        if (playheadCanvasY >= 0 && playheadCanvasY <= canvas.height + 5) {
+          ctx.strokeStyle = "#ff1744"; ctx.lineWidth = 3;
+          const drawY = Math.min(playheadCanvasY, canvas.height - 1.5);
+          ctx.beginPath(); ctx.moveTo(0, drawY); ctx.lineTo(canvas.width, drawY); ctx.stroke();
+        }
+      }
+
+      if (isSelectingArea) {
+        ctx.save();
+        const rx = areaSelectionStart.x - scrollLeft, ry = areaSelectionStart.y - scrollTop;
+        ctx.fillStyle = "rgba(0, 229, 255, 0.12)"; ctx.fillRect(rx, ry, areaSelectionEnd.x - areaSelectionStart.x, areaSelectionEnd.y - areaSelectionStart.y);
+        ctx.strokeStyle = "#00e5ff"; ctx.lineWidth = 1.5; ctx.setLineDash([4, 4]);
+        ctx.strokeRect(rx, ry, areaSelectionEnd.x - areaSelectionStart.x, areaSelectionEnd.y - areaSelectionStart.y);
+        ctx.restore();
+      }
+
+      requestAnimationFrame(draw);
+    }
+
+    document.getElementById('playBtn').addEventListener('click', async () => { await Tone.start(); scheduleAllNotes(); Tone.Transport.start(); });
+    document.getElementById('stopBtn').addEventListener('click', () => { Tone.Transport.stop(); });
+    const loopBtn = document.getElementById('loopBtn');
+    loopBtn.addEventListener('click', () => {
+      isLoopMode = !isLoopMode; loopBtn.textContent = `ループ: ${isLoopMode ? "ON" : "OFF"}`;
+      loopBtn.classList.toggle('active', isLoopMode); scheduleAllNotes();
+    });
+    document.getElementById('zoomInBtn').addEventListener('click', () => updateZoom(zoomLevel + 0.25));
+    document.getElementById('zoomOutBtn').addEventListener('click', () => updateZoom(zoomLevel - 0.25));
+    document.getElementById('bpmInput').addEventListener('change', (e) => {
+      bpm = Math.max(30, Math.min(300, parseInt(e.target.value) || 120)); e.target.value = bpm;
+      if (currentBpmChanges.length === 0) { currentBpmChanges = [{ beat: 0.0, bpm: bpm }]; } 
+      else { currentBpmChanges[0].bpm = bpm; }
+      scheduleAllNotes();
+    });
+    document.getElementById('snapSelect').addEventListener('change', (e) => snapUnit = parseFloat(e.target.value));
+
+    const tools = { toolPointer: 'pointer', toolPencil: 'pencil', toolEraser: 'eraser', toolBpm: 'bpm', toolLyric: 'lyric' };;
+    Object.keys(tools).forEach(id => {
+      document.getElementById(id).addEventListener('click', () => {
+        currentTool = tools[id];
+        document.querySelectorAll('.tool-btn').forEach(b => b.classList.remove('active'));
+        document.getElementById(id).classList.add('active');
+        if (currentTool !== 'pointer') selectedNoteIds.clear();
+        updateInspector();
+      });
+    });
+
+    document.getElementById('undoBtn').addEventListener('click', executeUndo);
+    document.getElementById('redoBtn').addEventListener('click', executeRedo);
+
+    document.getElementById('saveJsonBtn').addEventListener('click', () => {
+      const blob = new Blob([JSON.stringify({ bpm, bpmChanges: currentBpmChanges, notes }, null, 2)], { type: "application/json" });
+      const a = document.createElement("a"); a.href = URL.createObjectURL(blob);
+      a.download = `piano_roll_sequence_${Date.now()}.json`; a.click();
+    });
+
+    document.getElementById('loadJsonBtn').addEventListener('click', () => { document.getElementById('jsonFileInput').click(); });
+
+    document.getElementById('jsonFileInput').addEventListener('change', (e) => {
+      const file = e.target.files[0]; if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (evt) => {
+        try {
+          const imported = JSON.parse(evt.target.result);
+          pushHistory();
+          
+          let loadedBpm = parseFloat(imported.bpm || imported.bgm || 120);
+          bpm = loadedBpm; document.getElementById('bpmInput').value = bpm;
+          
+          if (imported.bpmChanges && Array.isArray(imported.bpmChanges) && imported.bpmChanges.length > 0) {
+            currentBpmChanges = imported.bpmChanges.map(c => ({ beat: parseFloat(c.beat), bpm: parseFloat(c.bpm) }));
+          } else {
+            currentBpmChanges = [{ beat: 0.0, bpm: bpm }];
+          }
+          
+          notes = [];
+          if (imported.notes && Array.isArray(imported.notes)) {
+            for(let i=0; i<imported.notes.length; i++) {
+              let n = imported.notes[i];
+              if (!n || n.midi == null || n.startBeat == null || n.duration == null) continue;
+              notes.push({
+                id: n.id || ("legacy_" + Date.now() + "_" + i + "_" + Math.floor(Math.random() * 10000)),
+                midi: parseInt(n.midi), 
+                startBeat: parseFloat(n.startBeat), 
+                duration: parseFloat(n.duration),
+                lyric: n.lyric || "あ",
+                pitchOffset: n.pitchOffset != null ? parseFloat(n.pitchOffset) : 0.0
+              });
+            }
+            let maxBeat = 0;
+            for(let i=0; i<notes.length; i++) { if (notes[i].startBeat + notes[i].duration > maxBeat) maxBeat = notes[i].startBeat + notes[i].duration; }
+            autoExpandMeasures(maxBeat);
+          }
+          
+          selectedNoteIds.clear(); 
+          scheduleAllNotes();
+          updateInspector();
+
+          if (notes.length > 0) {
+            let minMidi = notes[0].midi, maxMidi = notes[0].midi, minBeat = notes[0].startBeat;
+            for(let i=0; i<notes.length; i++) {
+              if (notes[i].midi < minMidi) minMidi = notes[i].midi;
+              if (notes[i].midi > maxMidi) maxMidi = notes[i].midi;
+              if (notes[i].startBeat < minBeat) minBeat = notes[i].startBeat;
+            }
+            const centerMidi = (minMidi + maxMidi) / 2;
+            workspace.scrollLeft = Math.max(0, Math.min(TOTAL_WIDTH - workspace.clientWidth, (centerMidi - START_MIDI) * NOTE_WIDTH - workspace.clientWidth / 2));
+            workspace.scrollTop = Math.max(0, Math.min(TOTAL_HEIGHT - workspace.clientHeight, TOTAL_HEIGHT - (minBeat * BEAT_HEIGHT) - workspace.clientHeight * 0.7));
+          }
+
+          e.target.value = ''; alert("正常に読み込みました。");
+        } catch (err) { alert("読込失敗: データが破損している可能性があります。"); console.error(err); }
+      };
+      reader.readAsText(file);
+    });
+
+    document.getElementById("exportWavBtn").addEventListener('click', async () => {
+      if (notes.length === 0) return alert("出力するノートがありません。");
+      alert("WAVバックグラウンドレンダリングを開始します。");
+      
+      let maxBeat = 0;
+      for(let i=0; i<notes.length; i++) { if (notes[i].startBeat + notes[i].duration > maxBeat) maxBeat = notes[i].startBeat + notes[i].duration; }
+      const durationSec = beatToSeconds(maxBeat, currentBpmChanges) + 2.0;
+
+      try {
+        const buffer = await Tone.Offline(async () => {
+          const offlineSampler = new Tone.Sampler({
+            urls: {
+              "A0": "A0.mp3", "C1": "C1.mp3", "D#1": "Ds1.mp3", "F#1": "Fs1.mp3",
+              "A1": "A1.mp3", "C2": "C2.mp3", "D#2": "Ds2.mp3", "F#2": "Fs2.mp3",
+              "A2": "A2.mp3", "C3": "C3.mp3", "D#3": "Ds3.mp3", "F#3": "Fs3.mp3",
+              "A3": "A3.mp3", "C4": "C4.mp3", "D#4": "Ds4.mp3", "F#4": "Fs4.mp3",
+              "A4": "A4.mp3", "C5": "C5.mp3", "D#5": "Ds5.mp3", "F#5": "Fs5.mp3",
+              "A5": "A5.mp3", "C6": "C6.mp3", "D#6": "Ds6.mp3", "F#6": "Fs6.mp3",
+              "A6": "A6.mp3", "C7": "C7.mp3", "D#7": "Ds7.mp3", "F#7": "Fs7.mp3",
+              "A7": "A7.mp3", "C8": "C8.mp3"
+            },
+            release: 1.2, baseUrl: "https://tonejs.github.io/audio/salamander/"
+          }).toDestination();
+          await Tone.loaded();
+
+          notes.forEach(note => {
+            const startSec = beatToSeconds(note.startBeat, currentBpmChanges);
+            const endSec = beatToSeconds(note.startBeat + note.duration, currentBpmChanges);
+            offlineSampler.triggerAttackRelease(Tone.Frequency(note.midi, "midi").toNote(), Math.max(0.05, endSec - startSec), startSec);
+          });
+        }, durationSec);
+
+        const numOfChan = buffer.numberOfChannels, length = buffer.length * numOfChan * 2 + 44;
+        const bufferWav = new ArrayBuffer(length), view = new DataView(bufferWav);
+        const sampleRate = buffer.sampleRate; let pos = 0;
+        function setU16(d) { view.setUint16(pos, d, true); pos += 2; }
+        function setU32(d) { view.setUint32(pos, d, true); pos += 4; }
+        setU32(0x46464952); setU32(length - 8); setU32(0x45564157); setU32(0x20746d66);
+        setU32(16); setU16(1); setU16(numOfChan); setU32(sampleRate);
+        setU32(sampleRate * 2 * numOfChan); setU16(numOfChan * 2); setU16(16);
+        setU32(0x61746164); setU32(length - pos - 4);
+
+        for (let i = 0; i < numOfChan; i++) {
+          const channel = buffer.getChannelData(i);
+          for (let j = 0; j < buffer.length; j++) {
+            let s = Math.max(-1, Math.min(1, channel[j]));
+            view.setInt16(pos + j * numOfChan * 2 + i * 2, (0.5 + s < 0 ? s * 32768 : s * 32767) | 0, true);
+          }
+        }
+        const blob = new Blob([view], { type: 'audio/wav' }); const url = URL.createObjectURL(blob);
+        const a = document.createElement("a"); a.href = url; a.download = `sequence_${Date.now()}.wav`; a.click(); URL.revokeObjectURL(url);
+      } catch (err) { alert("エクスポート失敗"); }
+    });
+
+    document.getElementById("exportPdfBtn").addEventListener('click', async () => {
+      if (notes.length === 0) return alert("出力するノートがありません。");
+      if (typeof Vex === "undefined" || typeof html2pdf === "undefined") return alert("ライブラリ不足。");
+      const renderArea = document.getElementById("pdf-render-area"); renderArea.innerHTML = ""; renderArea.style.display = "block"; 
+      alert("PDF楽譜生成中...");
+      
+      const VF = Vex.Flow;
+      let maxBeat = 0;
+      for(let i=0; i<notes.length; i++) { if (notes[i].startBeat + notes[i].duration > maxBeat) maxBeat = notes[i].startBeat + notes[i].duration; }
+      const totalMeasures = Math.ceil(maxBeat / 4);
+
+      for (let m = 0; m < totalMeasures; m++) {
+        const measureDiv = document.createElement("div"); measureDiv.className = "pdf-measure"; renderArea.appendChild(measureDiv);
+        const renderer = new VF.Renderer(measureDiv, VF.Renderer.Backends.SVG); renderer.resize(700, 150);
+        const context = renderer.getContext(); const stave = new VF.Stave(10, 40, 680);
+        if (m === 0) stave.addClef("treble").addTimeSignature("4/4");
+        stave.setContext(context).draw();
+        let vexNotes = [];
+        for (let b = 0; b < 4; b++) {
+          const currentBeat = m * 4 + b;
+          const beatNotes = notes.filter(n => n.startBeat >= currentBeat && n.startBeat < currentBeat + 1);
+          if (beatNotes.length > 0) {
+            const keys = beatNotes.map(n => {
+              let noteStr = Tone.Frequency(n.midi, "midi").toNote().replace("#", "#/").toLowerCase(); 
+              return noteStr.match(/^[a-g](#|b)?\/\d$/i) ? noteStr : "c/4";
+            });
+            vexNotes.push(new VF.StaveNote({ keys: [...new Set(keys)].sort(), duration: "q" }));
+          } else vexNotes.push(new VF.StaveNote({ keys: ["b/4"], duration: "qr" }));
+        }
+        const voice = new VF.Voice({ num_beats: 4, beat_value: 4 }); voice.addTickables(vexNotes);
+        VF.Accidental.applyAccidentals([voice], "C");
+        new VF.Formatter().joinVoices([voice]).format([voice], 600); voice.draw(context, stave);
+      }
+      try { await html2pdf().set({ margin: 10, filename: `score_${Date.now()}.pdf`, html2canvas: { scale: 2 }, jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' } }).from(renderArea).save(); } 
+      catch (error) { alert("PDF生成失敗"); } finally { renderArea.style.display = "none"; }
+    });
+
+    function executeCopy() {
+      if (selectedNoteIds.size === 0) return;
+      const selectedNotes = notes.filter(n => selectedNoteIds.has(n.id));
+      let minStartBeat = Infinity;
+      for(let i=0; i<selectedNotes.length; i++) { if (selectedNotes[i].startBeat < minStartBeat) minStartBeat = selectedNotes[i].startBeat; }
+      clipboardNotes = selectedNotes.map(n => ({ midi: n.midi, startBeatOffset: n.startBeat - minStartBeat, duration: n.duration, lyric: n.lyric, pitchOffset: n.pitchOffset }));
+    }
+
+    function executePaste() {
+      if (clipboardNotes.length === 0) return;
+      pushHistory();
+      let basePasteBeat = (Tone.Transport.state === "started" || Tone.Transport.state === "paused") 
+        ? secondsToBeat(Tone.Transport.seconds, currentBpmChanges)
+        : Math.max(0, Math.floor(((TOTAL_HEIGHT - (workspace.scrollTop + workspace.clientHeight / 2)) / BEAT_HEIGHT) / snapUnit) * snapUnit);
+      selectedNoteIds.clear();
+      clipboardNotes.forEach(clip => {
+        const targetBeat = basePasteBeat + clip.startBeatOffset;
+        if (targetBeat >= TOTAL_BEATS) autoExpandMeasures(targetBeat + clip.duration); 
+        const newNote = { id: "n_" + Date.now() + "_" + Math.floor(Math.random() * 10000), midi: clip.midi, startBeat: targetBeat, duration: clip.duration, lyric: clip.lyric || "あ", pitchOffset: clip.pitchOffset || 0.0 };
+        notes.push(newNote); selectedNoteIds.add(newNote.id);
+      });
+      scheduleAllNotes();
+      updateInspector();
+    }
+
+    function deleteSelectedNotes() {
+      if (selectedNoteIds.size === 0) return;
+      pushHistory(); notes = notes.filter(n => !selectedNoteIds.has(n.id));
+      selectedNoteIds.clear(); scheduleAllNotes(); updateInspector();
+    }
+
+    window.addEventListener('keydown', (e) => {
+      const mod = navigator.platform.toUpperCase().indexOf('MAC') >= 0 ? e.metaKey : e.ctrlKey;
+      if (e.code === "Space" && document.activeElement.tagName !== "INPUT" && document.activeElement.tagName !== "TEXTAREA") { e.preventDefault(); Tone.Transport.state === "started" ? Tone.Transport.pause() : (Tone.start(), Tone.Transport.start()); }
+      if ((e.code === "Delete" || e.code === "Backspace") && document.activeElement.tagName !== "INPUT" && document.activeElement.tagName !== "TEXTAREA") { e.preventDefault(); deleteSelectedNotes(); }
+      if (mod && e.code === "KeyA" && document.activeElement.tagName !== "INPUT" && document.activeElement.tagName !== "TEXTAREA") { e.preventDefault(); selectedNoteIds.clear(); notes.forEach(n => selectedNoteIds.add(n.id)); updateInspector(); }
+      if (mod && e.code === "KeyC" && document.activeElement.tagName !== "INPUT" && document.activeElement.tagName !== "TEXTAREA") { e.preventDefault(); executeCopy(); }
+      if (mod && e.code === "KeyV" && document.activeElement.tagName !== "INPUT" && document.activeElement.tagName !== "TEXTAREA") { e.preventDefault(); executePaste(); }
+      if (mod && !e.shiftKey && e.code === "KeyZ" && document.activeElement.tagName !== "INPUT" && document.activeElement.tagName !== "TEXTAREA") { e.preventDefault(); executeUndo(); }
+      if (mod && ((e.shiftKey && e.code === "KeyZ") || e.code === "KeyY") && document.activeElement.tagName !== "INPUT" && document.activeElement.tagName !== "TEXTAREA") { e.preventDefault(); executeRedo(); }
+    });
+
+    function generateKeyboard() {
+      keyboardContent.innerHTML = '';
+      for (let midi = START_MIDI; midi <= END_MIDI; midi++) {
+        const key = document.createElement('div');
+        key.className = `key ${isBlackKey(midi) ? 'black' : 'white'}`; key.dataset.midi = midi;
+        key.style.width = NOTE_WIDTH + "px"; key.style.left = ((midi - START_MIDI) * NOTE_WIDTH) + "px";
+        key.textContent = getNoteText(midi);
+        key.addEventListener('mousedown', async () => { await Tone.start(); sampler.triggerAttackRelease(Tone.Frequency(midi, "midi").toNote(), "8n"); key.classList.add('active'); });
+        key.addEventListener('mouseup', () => key.classList.remove('active'));
+        key.addEventListener('mouseleave', () => key.classList.remove('active'));
+        keyboardContent.appendChild(key);
+      }
+    }
+
+    // --- MusicXML Export Logic ---
+    document.addEventListener('DOMContentLoaded', () => {
+      const exportXmlBtn = document.getElementById('exportXmlBtn');
+      if (exportXmlBtn) {
+        exportXmlBtn.addEventListener('click', () => {
+          if (notes.length === 0) {
+            alert("出力するノートがありません。メロディを入力してください。");
+            return;
+          }
+          const bpmInput = document.getElementById('bpmInput');
+          const bpmValue = parseFloat(bpmInput ? bpmInput.value : 120) || 120;
+          const xmlString = generateMusicXML(notes, bpmValue);
+          const blob = new Blob([xmlString], { type: 'application/xml' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = "teto_score.musicxml";
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+        });
+      }
+    });
+
+    function generateMusicXML(notesData, bpmValue) {
+      const sorted = [...notesData].sort((a, b) => a.startBeat - b.startBeat);
+      let xml = `<?xml version="1.0" encoding="UTF-8"?>\n`;
+      xml += `<!DOCTYPE score-partwise PUBLIC "-//Recordare//DTD MusicXML 3.1 Partwise//EN" "http://www.musicxml.org/dtds/partwise.dtd">\n`;
+      xml += `<score-partwise version="3.1">\n  <part-list>\n    <score-part id="P1">\n      <part-name>Vocal</part-name>\n    </score-part>\n  </part-list>\n`;
+      xml += `  <part id="P1">\n    <measure number="1">\n`;
+      xml += `      <attributes>\n        <divisions>480</divisions>\n        <key><fifths>0</fifths></key>\n        <time><beats>4</beats><beat-type>4</beat-type></time>\n        <clef><sign>G</sign><line>2</line></clef>\n      </attributes>\n`;
+      xml += `      <direction placement="above">\n        <direction-type>\n          <metronome>\n            <beat-unit>quarter</beat-unit>\n            <per-minute>${bpmValue}</per-minute>\n          </metronome>\n        </direction-type>\n        <sound tempo="${bpmValue}"/>\n      </direction>\n`;
+
+      let currentTick = 0;
+      const noteNames = ["C", "C", "D", "D", "E", "F", "F", "G", "G", "A", "A", "B"];
+      const alters = [0, 1, 0, 1, 0, 0, 1, 0, 1, 0, 1, 0];
+      
+      for (const n of sorted) {
+        let startTick = Math.round(n.startBeat * 480);
+        const durationTick = Math.round(n.duration * 480);
+        if (startTick < currentTick) continue; 
+        
+        if (startTick > currentTick) {
+          const restTick = startTick - currentTick;
+          xml += `      <note>\n        <rest/>\n        <duration>${restTick}</duration>\n      </note>\n`;
+        }
+        
+        const octave = Math.floor(n.midi / 12) - 1;
+        const noteIndex = n.midi % 12;
+        const step = noteNames[noteIndex];
+        const alter = alters[noteIndex];
+        const lyric = n.lyric || "あ";
+        
+        xml += `      <note>\n        <pitch>\n          <step>${step}</step>\n          ${alter ? `<alter>${alter}</alter>\n          ` : ""}<octave>${octave}</octave>\n        </pitch>\n        <duration>${durationTick}</duration>\n        <lyric>\n          <syllable>single</syllable>\n          <text>${lyric}</text>\n        </lyric>\n      </note>\n`;
+        currentTick = startTick + durationTick;
+      }
+      xml += `    </measure>\n  </part>\n</score-partwise>`;
+      return xml;
+    }
+    // --- End MusicXML Export Logic ---
+
+    // --- VOICEVOX Integration Logic ---
+    document.addEventListener('DOMContentLoaded', () => {
+      const exportXmlBtn = document.getElementById('exportXmlBtn');
+      if (exportXmlBtn) {
+        const vvBtn = document.createElement('button');
+        vvBtn.id = 'playVoicevoxBtn';
+        vvBtn.className = 'action-btn';
+        vvBtn.style.backgroundColor = '#4caf50';
+        vvBtn.style.color = 'white';
+        vvBtn.style.borderColor = '#4caf50';
+        vvBtn.style.marginLeft = '10px';
+        vvBtn.textContent = '🟢 ずんだもんで歌う(VOICEVOX)';
+        exportXmlBtn.parentNode.insertBefore(vvBtn, exportXmlBtn.nextSibling);
+
+        vvBtn.addEventListener('click', async () => {
+          if (notes.length === 0) {
+            alert("歌わせるノートがありません。メロディを入力してください。");
+            return;
+          }
+          
+          alert("VOICEVOXと通信しています... (VOICEVOXアプリを起動しておいてください)");
+          const bpmInput = document.getElementById('bpmInput');
+          const bpmValue = parseFloat(bpmInput ? bpmInput.value : 120) || 120;
+          
+          try {
+            const sorted = [...notes].sort((a, b) => a.startBeat - b.startBeat);
+            let currentBeat = 0;
+            const vvNotes = [];
+            const secPerBeat = 60.0 / bpmValue;
+            
+            for (const n of sorted) {
+              if (n.startBeat > currentBeat) {
+                const restBeats = n.startBeat - currentBeat;
+                vvNotes.push({
+                  key: null,
+                  lyric: "",
+                  frame_length: Math.max(1, Math.round(restBeats * secPerBeat * 93.75))
+                });
+              }
+              
+              const noteBeats = n.duration;
+              vvNotes.push({
+                key: n.midi,
+                lyric: n.lyric || "あ",
+                frame_length: Math.max(1, Math.round(noteBeats * secPerBeat * 93.75))
+              });
+              
+              currentBeat = n.startBeat + n.duration;
+            }
+            
+            const score = { notes: vvNotes };
+            const speakerId = 3; 
+
+            console.log("VOICEVOX Score:", score);
+            const text = sorted.map(n => n.lyric || "あ").join("");
+            
+            const queryRes = await fetch(`http://127.0.0.1:50021/audio_query?text=${encodeURIComponent(text)}&speaker=${speakerId}`, {
+              method: 'POST'
+            });
+            
+            if (!queryRes.ok) throw new Error("VOICEVOXへの接続に失敗しました。VOICEVOXが起動しているか確認してください。");
+            
+            const queryData = await queryRes.json();
+            
+            /* ★ インスペクターで設定したピッチ（イントネーション）を各文字に反映する */
+            let phraseIndex = 0;
+            for(let i=0; i<queryData.accent_phrases.length; i++) {
+                let phrase = queryData.accent_phrases[i];
+                for(let j=0; j<phrase.moras.length; j++) {
+                   if (phraseIndex < sorted.length) {
+                       const midi = sorted[phraseIndex].midi;
+                       const offset = sorted[phraseIndex].pitchOffset || 0.0;
+                       
+                       // MIDI基準ピッチにユーザーが指定したゆくも風オフセットを加算
+                       phrase.moras[j].pitch = 5.0 + (midi - 60) * 0.1 + offset; 
+                       phrase.moras[j].vowel_length = sorted[phraseIndex].duration * secPerBeat;
+                   }
+                   phraseIndex++;
+                }
+            }
+
+            const synthRes = await fetch(`http://127.0.0.1:50021/synthesis?speaker=${speakerId}`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(queryData)
+            });
+
+            if (!synthRes.ok) throw new Error("音声の合成に失敗しました。");
+
+            const audioBlob = await synthRes.blob();
+            const audioUrl = URL.createObjectURL(audioBlob);
+            
+            const audio = new Audio(audioUrl);
+            audio.play();
+            
+            const a = document.createElement('a');
+            a.href = audioUrl;
+            a.download = "zundamon_track.wav";
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+
+          } catch (error) {
+            console.error(error);
+            alert(error.message);
+          }
+        });
+      }
+    });
+    // --- End VOICEVOX Integration Logic ---
+
+    window.addEventListener('load', () => {
+      let scrollDummy = document.getElementById("scrollDummy");
+      if (!scrollDummy) { scrollDummy = document.createElement("div"); scrollDummy.id = "scrollDummy"; scrollDummy.className = "dummy-scroll"; workspace.appendChild(scrollDummy); }
+      generateKeyboard(); resizeCanvas(); updateHistoryButtons(); updateInspector(); workspace.scrollTop = TOTAL_HEIGHT;
+      requestAnimationFrame(draw);
+    });
+    window.addEventListener('resize', resizeCanvas);
+  </script>
+</body>
+</html>
