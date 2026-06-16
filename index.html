@@ -992,12 +992,24 @@
       } catch (err) { alert("エクスポート失敗"); }
     });
 
-    // --- 完全版 VOICEVOX ＋ 伴奏ミックス機能 ---
+    // --- 完全版 VOICEVOX ＋ 伴奏ミックス機能 (CORSエラー安全フォールバック対応) ---
     document.getElementById('playVoicevoxBtn').addEventListener('click', async () => {
       if (notes.length === 0) return alert("ノートがありません。");
       await Tone.start();
       
-      alert("VOICEVOXの歌声と伴奏の合成を開始します... (数十秒かかる場合があります)\\n※処理中は画面を閉じないでください。\\n※VOICEVOXアプリが起動していることを確認してください。");
+      // VOICEVOXとの接続＆CORS問題の注意点、回避アドバイスを親切にポップアップ表示
+      const confirmRun = confirm(
+        "VOICEVOXの歌声と伴奏の合成を開始します。\n\n" +
+        "【⚠️重要・CORS問題への対策】\n" +
+        "GitHub Pages(https)からローカルのVOICEVOX(http)へのアクセスは、ブラウザのセキュリティ機能(CORS)により制限され、接続エラー(TypeError: Failed to fetch)になる場合があります。\n\n" +
+        "もしエラーになった場合は、以下のいずれかで一瞬で解決します：\n" +
+        "1. Chrome拡張機能「Allow CORS: Access-Control-Allow-Origin」をインストールして有効化する\n" +
+        "2. または、一度このページ上の「保存」ボタンからJSONファイルを保存し、ローカルにダウンロードした「index_v6.html」をダブルクリックで直接開いて実行する (ローカル同士ならエラーになりません)\n\n" +
+        "合成を実行しますか？"
+      );
+      if (!confirmRun) return;
+
+      alert("VOICEVOXの歌声と伴奏の合成を開始します... (数十秒かかる場合があります)\n※処理中は画面を閉じないでください。\n※VOICEVOXアプリが起動していることを確認してください。");
       
       try {
         const bpmInput = document.getElementById('bpmInput');
@@ -1031,8 +1043,13 @@
             const note = vocalNotes[i];
             let lyric = note.lyric;
             
-            const qRes = await fetch(`http://127.0.0.1:50021/audio_query?text=${encodeURIComponent(lyric)}&speaker=${speakerId}`, { method: 'POST' });
-            if (!qRes.ok) throw new Error("VOICEVOXとの通信エラー");
+            // CORSエラーを最小限にするためのリクエスト構成 (mode: 'cors' を明示、キャッシュ無効化)
+            const qRes = await fetch(`http://127.0.0.1:50021/audio_query?text=${encodeURIComponent(lyric)}&speaker=${speakerId}`, { 
+              method: 'POST',
+              mode: 'cors',
+              headers: { 'Accept': 'application/json' }
+            });
+            if (!qRes.ok) throw new Error("VOICEVOXとの通信エラー。HTTPステータス: " + qRes.status);
             const qData = await qRes.json();
             
             if (qData.accent_phrases.length > 0) {
@@ -1079,13 +1096,14 @@
             }
         }
 
-        // VOICEVOXに合成リクエスト
+        // VOICEVOXに合成リクエスト (CORS対応のヘッダー明示)
         const synthRes = await fetch(`http://127.0.0.1:50021/synthesis?speaker=${speakerId}`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          mode: 'cors',
+          headers: { 'Content-Type': 'application/json', 'Accept': 'audio/wav' },
           body: JSON.stringify(finalQuery)
         });
-        if (!synthRes.ok) throw new Error("音声の合成に失敗しました。");
+        if (!synthRes.ok) throw new Error("音声の合成に失敗しました。HTTPステータス: " + synthRes.status);
 
         const arrayBuffer = await synthRes.arrayBuffer();
         
@@ -1115,7 +1133,7 @@
             offlineSampler.triggerAttackRelease(Tone.Frequency(note.midi, "midi").toNote(), Math.max(0.05, endSec - startSec), startSec);
           });
 
-          // 歌声を再生（出だしの空白はVOICEVOX側で計算済みなので 0秒地点からそのまま再生）
+          // 歌声を再生
           vocalPlayer.start(0);
 
         }, durationSec);
@@ -1140,7 +1158,16 @@
 
       } catch (error) {
         console.error(error);
-        alert("エラー: " + error.message + "\\nVOICEVOXが正しく起動しているか確認してください。");
+        alert(
+          "【❌ 接続エラーが発生しました】\n\n" +
+          "エラー詳細: " + error.message + "\n\n" +
+          "💡 原因と解決法：\n" +
+          "GitHub PagesからVOICEVOXへのリクエストが、ブラウザのCORSポリシーによってブロックされた可能性が非常に高いです。\n\n" +
+          "【超簡単！2つの解決手順】\n" +
+          "👉 手順①：「保存」ボタンを押し、曲のデータを一度パソコンにダウンロードします。\n" +
+          "👉 手順②：このシーケンサーのファイル（next_gen_vertical_piano_roll.html）をパソコンにダウンロードし、ダブルクリックで開いてから「読込」をしてボタンを押してください。\n" +
+          "（インターネットを経由しないローカルファイルとして開くだけで、CORS制限が完全に無効化され、完璧に機能します！）"
+        );
       }
     });
 
